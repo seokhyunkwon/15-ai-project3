@@ -1,35 +1,33 @@
-# 지역 축제·관광지 맞춤 여행 코스 추천 시스템
+# Travel Course Recommendation
 
-Streamlit 화면과 MySQL/MariaDB 데이터베이스를 연결한 DB + 크롤링 프로젝트입니다. HeidiSQL은 DB 생성, 테이블 확인, ERD/관계 확인, SQL 테스트 용도로 사용합니다.
+Streamlit + MySQL/MariaDB 기반 여행 코스 추천 프로젝트입니다. 한국관광공사 TourAPI 데이터를 수집해 관광지, 식당, 숙소, 축제 정보를 DB에 저장하고, 저장된 이미지와 추천 점수를 화면에 표시합니다.
 
-## 프로젝트 포인트
+## Tech Stack
 
-- 공공 관광 데이터 또는 웹 크롤링 결과를 DB에 저장
-- 지역, 관광지, 축제, 숙소, 음식점, 카테고리, 회원, 찜, 리뷰, 여행코스를 관계형 DB로 설계
-- 회원별 관심 지역과 찜 데이터를 바탕으로 여행 코스 생성
-- 축제 기간, 카테고리, 평점, 지역 필터를 활용한 탐색 기능
-- 크롤링 성공/실패 이력을 `crawl_logs` 테이블에 저장
-
-## 기술 스택
-
-- Frontend/App: Streamlit
+- App: Streamlit
 - Language: Python
-- DB: MySQL 또는 MariaDB
-- DB Client: HeidiSQL
-- Crawling/API: requests, BeautifulSoup, 한국관광공사 TourAPI 선택 연동
+- Database: MySQL or MariaDB
+- Data source: 한국관광공사 TourAPI, 관광사진 정보 API
+- Main scripts:
+  - `app.py`: Streamlit 앱
+  - `collector.py`: TourAPI 전체 수집
+  - `backfill_missing_images.py`: 대표 이미지가 비어 있는 관광지 보강
+  - `schema.sql`: 초기 DB 스키마
+  - `heidisql_user.sql`: 로컬 DB 사용자 생성 예시
 
-## 실행 순서
+## Setup
 
-1. MySQL 또는 MariaDB 서버를 실행합니다.
-2. HeidiSQL에서 새 세션을 만들고 접속합니다.
-3. HeidiSQL에서 `schema.sql` 파일 내용을 실행합니다.
-4. Python 패키지를 설치합니다.
+1. MySQL 또는 MariaDB를 실행합니다.
+2. HeidiSQL 등 DB 클라이언트에서 DB와 사용자를 준비합니다.
+   - 새 환경이면 `heidisql_user.sql`을 먼저 실행합니다.
+   - 그 다음 `schema.sql`을 실행해 테이블을 생성합니다.
+3. Python 패키지를 설치합니다.
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-5. DB 접속 정보를 환경 변수로 설정합니다. 수업/발표 환경에서는 `root`보다 전용 계정을 만드는 것을 추천합니다.
+4. 환경변수를 설정합니다.
 
 ```powershell
 $env:TRAVEL_DB_HOST="127.0.0.1"
@@ -38,165 +36,124 @@ $env:TRAVEL_DB_USER="travel_app"
 $env:TRAVEL_DB_PASSWORD="travel1234"
 $env:TRAVEL_DB_NAME="travel_course_db"
 $env:TRAVEL_DB_AUTH_PLUGIN="mysql_native_password"
-$env:TOUR_API_SERVICE_KEY="data.go.kr에서 받은 국문 관광정보 서비스 디코딩 키"
+$env:TOUR_API_SERVICE_KEY="공공데이터포털_TourAPI_서비스키"
 ```
 
-6. Streamlit 앱을 실행합니다.
+`.streamlit/secrets.toml`에 넣어도 됩니다. 이 파일은 커밋하지 않습니다.
+
+```toml
+TOUR_API_SERVICE_KEY = "공공데이터포털_TourAPI_서비스키"
+```
+
+5. 앱을 실행합니다.
 
 ```powershell
 streamlit run app.py
 ```
 
-## HeidiSQL에서 schema.sql 실행하는 법
+## Data Collection
 
-1. HeidiSQL 실행
-2. 왼쪽 세션 목록에서 MySQL/MariaDB 접속
-3. 상단 메뉴 `파일` -> `SQL 파일 불러오기` 선택
-4. 프로젝트 폴더의 `schema.sql` 선택
-5. 쿼리 창에 SQL이 열리면 상단의 파란 실행 버튼 또는 `F9` 실행
-6. 왼쪽 DB 목록에서 새로고침
-7. `travel_course_db` 데이터베이스가 생겼는지 확인
-8. `members`, `regions`, `places`, `festivals`, `travel_courses` 같은 테이블이 보이면 성공
+전체 데이터 수집:
 
-이미 HeidiSQL에서 쿼리를 실행해서 DB가 만들어졌다면, 왼쪽 목록에서 `travel_course_db`가 보이는지 확인하면 됩니다. 안 보이면 왼쪽 패널에서 우클릭 후 `새로고침`을 누르세요.
-
-## HeidiSQL 권장 계정
-
-로컬 DB가 `auth_gssapi_client` 같은 Windows 인증을 요구하면 Python 드라이버가 접속하지 못할 수 있습니다. HeidiSQL에서 관리자 계정으로 접속한 뒤 `heidisql_user.sql`을 한 번 실행하고, 앱은 `travel_app` 계정으로 접속하세요.
-
-```sql
-DROP USER IF EXISTS 'travel_app'@'localhost';
-DROP USER IF EXISTS 'travel_app'@'127.0.0.1';
-CREATE USER 'travel_app'@'localhost' IDENTIFIED BY 'travel1234';
-CREATE USER 'travel_app'@'127.0.0.1' IDENTIFIED BY 'travel1234';
-ALTER USER 'travel_app'@'localhost'
-  IDENTIFIED VIA mysql_native_password USING PASSWORD('travel1234');
-ALTER USER 'travel_app'@'127.0.0.1'
-  IDENTIFIED VIA mysql_native_password USING PASSWORD('travel1234');
-GRANT ALL PRIVILEGES ON travel_course_db.* TO 'travel_app'@'localhost';
-GRANT ALL PRIVILEGES ON travel_course_db.* TO 'travel_app'@'127.0.0.1';
-FLUSH PRIVILEGES;
+```powershell
+$env:TOUR_API_KEY="공공데이터포털_TourAPI_서비스키"
+python collector.py --all --limit-per-area 50
 ```
 
-## VisitKorea API 신청/사용 추천
+`--limit-per-area`가 커질수록 수집 시간과 이미지 용량이 크게 늘어납니다. 수집 순서는 대략 관광지, 식당, 숙소, 축제 순서입니다.
 
-한국관광콘텐츠랩 또는 공공데이터포털에서 신청할 API는 우선 `국문 관광정보 서비스` 하나면 충분합니다. 프로젝트에서는 JSON 응답을 쓰는 방식이 가장 편합니다.
+대표 이미지가 비어 있는 관광지는 전체 수집이 끝난 뒤 별도 백필 스크립트로 보강합니다.
 
-필수로 쓰기 좋은 호출:
-
-| 용도 | API 호출명 | DB 연결 |
-| --- | --- | --- |
-| 지역 코드 수집 | `areaCode2` | `regions` |
-| 관광 카테고리 수집 | `categoryCode2` | `categories` |
-| 지역별 관광지 수집 | `areaBasedList2` | `places`, `place_categories` |
-| 축제/행사 수집 | `searchFestival2` | `festivals` |
-| 상세 설명 수집 | `detailCommon2` | `places.overview`, `festivals.overview` |
-| 타입별 상세 정보 | `detailIntro2` | 전화번호, 이용시간, 행사장소, 요금 등 |
-| 이미지 수집 | `detailImage2` | 포스터/대표 이미지 확장용 |
-
-추천 `contentTypeId`:
-
-| contentTypeId | 의미 | 프로젝트 활용 |
-| --- | --- | --- |
-| `12` | 관광지 | 여행지 탐색 |
-| `14` | 문화시설 | 박물관/전시/문화 공간 |
-| `15` | 행사/공연/축제 | 축제 일정 |
-| `25` | 여행코스 | 추천 코스 참고 데이터 |
-| `32` | 숙박 | `accommodations` |
-| `39` | 음식점 | `restaurants` |
-
-시간이 부족하면 `searchFestival2`, `areaBasedList2`, `detailCommon2` 이 3개만 써도 발표용으로 충분합니다. 더 풍성하게 보이게 하려면 `detailImage2`까지 붙이면 화면 퀄리티가 좋아집니다.
-
-### TourAPI 키 설정
-
-서비스키는 앱 화면에서 직접 입력하지 않습니다. 환경변수나 `.streamlit/secrets.toml`에 아래 이름으로 저장하세요.
-
-```toml
-TOUR_API_SERVICE_KEY = "국문 관광정보 서비스 API 키"
+```powershell
+python backfill_missing_images.py --limit 20 --dry-run
+python backfill_missing_images.py --limit 0
 ```
 
-data.go.kr에서 `Encoding` 키와 `Decoding` 키를 모두 제공하는 경우에는 `Decoding` 키 사용을 권장합니다. 앱은 `%2B` 같은 URL 인코딩 흔적이 있는 키를 한 번 풀어서 요청하므로, 기존에 복사한 인코딩 키도 대부분 그대로 사용할 수 있습니다.
+백필 순서:
 
-현재 연동된 국문 관광정보 서비스 호출:
+1. `places.external_id`를 TourAPI `contentId`로 보고 `detailImage2` 조회
+2. 그래도 이미지가 없으면 지역명/관광지명 키워드로 `PhotoGalleryService1/gallerySearchList1` 조회
+3. 찾은 이미지는 `static/images/places`에 저장하고 DB의 `places.image_path`, `places.image_original_url`을 채움
+4. 관광사진 API 결과는 `tour_photos`에도 저장
 
-- `searchFestival2`: 축제 데이터 수집
-- `areaBasedList2`: 지역별 관광지, 문화시설, 음식점, 여행코스 수집
+## DB Export And Restore
 
-수집된 장소는 기존 `places` 테이블에 저장되고, 유형에 따라 `place_categories`에 `관광지`, `문화시설`, `숙박`, `미식`, `카페`, `자연`, `야간` 같은 카테고리가 연결됩니다. 음식점은 `restaurants`, 숙박은 `accommodations` 테이블에도 함께 저장됩니다.
+수집한 DB 데이터는 Git에 자동으로 들어가지 않습니다. 다른 PC에서 같은 데이터를 쓰려면 SQL dump를 만들어 커밋하거나 별도로 전달해야 합니다.
 
-2026-06-30 전체 수집 실행 결과:
+예시:
 
-- 장소: 763건
-- 축제: 100건
-- 합계: 863건
-- 대표사진 URL 컬럼 `places.image_url` 추가
-
-## 추가된 맞춤 추천 기능
-
-- `여행지 탐색` 화면에서 여행 스타일, 동행 유형, 예산, 이동수단, 날씨, 여행 시간을 입력해 추천 점수를 계산합니다.
-- 평점, 리뷰 수, 선택한 여행 스타일, 날씨 조건, 찜한 카테고리 성향을 합산해 점수 높은 순서로 보여줍니다.
-- 각 카드에는 추천 점수, 추천 이유, 태그, 상세 정보, 찜하기, 리뷰 작성, 지도 표시가 함께 노출됩니다.
-- `여행 코스 만들기` 화면에는 기존 직접 선택 저장 흐름을 유지하면서, 맞춤 조건 기반 자동 코스 생성 영역을 추가했습니다.
-- `내 활동` 화면에서는 찜한 여행지와 찜 카테고리 성향을 확인할 수 있습니다.
-
-추천 점수 계산 방식:
-
-- 여행 스타일과 장소 카테고리/태그/설명이 맞으면 `+30`
-- 동행 유형과 맞으면 `+15`
-- 비/더움/추움에는 실내 또는 혼합 장소 가중치, 맑음에는 야외 또는 혼합 장소 가중치
-- 예산 컬럼이 있고 선택 예산과 맞으면 `+10`
-- 평점은 최대 `+40`, 리뷰 수는 최대 `+12`
-- 사용자가 많이 찜한 카테고리와 같으면 최대 `+15`
-
-자동 코스 생성 방식:
-
-- 추천 점수가 높은 장소를 먼저 후보로 사용합니다.
-- 반나절, 당일치기, 1박 2일에 따라 시간대 개수를 다르게 구성합니다.
-- 점심/저녁에는 미식 장소, 카페 시간대에는 카페, 야경 시간대에는 야간/전망/해변 키워드 장소를 우선 배치합니다.
-- 장소가 부족하면 남은 추천 후보를 안전하게 채우고, 비어 있으면 안내 메시지만 표시합니다.
-
-## 기존 DB 보강 ALTER TABLE
-
-기존 DB를 삭제하지 않고 추천 기능용 컬럼만 추가하려면 관리자 계정으로 로그인 후 `관리자 SQL` 화면의 `추천용 컬럼 안전 추가` 버튼을 누르거나, HeidiSQL에서 아래 SQL을 실행하세요.
-
-```sql
-ALTER TABLE places ADD COLUMN image_url VARCHAR(500) NULL;
-ALTER TABLE places ADD COLUMN tags VARCHAR(500) NULL;
-ALTER TABLE places ADD COLUMN indoor_outdoor ENUM('실내', '야외', '혼합') NULL;
-ALTER TABLE places ADD COLUMN recommended_for VARCHAR(255) NULL;
-ALTER TABLE places ADD COLUMN budget_level ENUM('저렴', '보통', '비쌈') NULL;
-ALTER TABLE places ADD COLUMN opening_hours VARCHAR(255) NULL;
-ALTER TABLE places ADD COLUMN source_api VARCHAR(80) NULL;
+```powershell
+mysqldump -u travel_app -p --default-character-set=utf8mb4 travel_course_db > travel_course_db_dump.sql
 ```
 
-앱은 위 컬럼이 없어도 `NULL` 기본값으로 처리하도록 작성되어 있으므로, ALTER TABLE을 실행하지 않은 상태에서도 기존 검색과 코스 기능이 중단되지 않습니다.
+다른 PC에서 복원:
 
-## 기본 로그인
+```powershell
+mysql -u travel_app -p --default-character-set=utf8mb4 travel_course_db < travel_course_db_dump.sql
+```
 
-`schema.sql` 실행 후 아래 계정으로 바로 로그인할 수 있습니다.
+HeidiSQL을 사용한다면 `도구` 또는 우클릭 메뉴의 SQL 내보내기/가져오기로 같은 작업을 할 수 있습니다.
 
-- ID: `demo`
-- PW: `demo1234`
+## Image Assets And GitHub Release
 
-관리자 계정:
+이미지 파일은 용량이 커서 Git 커밋 대상에서 제외합니다.
 
-- ID: `admin`
-- PW: `admin1234`
+현재 `.gitignore` 정책:
 
-## 발표용 15장 구성 예시
+```gitignore
+static/images/
+release-assets/
+*.zip
+```
 
-1. 프로젝트 소개
-2. 선정 배경: 여행 정보 분산 문제
-3. 핵심 기능 흐름
-4. 사용 기술 스택
-5. 전체 시스템 구조
-6. 데이터 수집 구조
-7. DB ERD
-8. 테이블별 역할
-9. 주요 관계 설명
-10. 크롤링 로그 및 중복 저장 방지
-11. 여행지 탐색 화면
-12. 여행 코스 생성 화면
-13. 찜/리뷰/회원 개인화
-14. 테스트 시나리오
-15. 개선 방향
+이미지는 압축해서 GitHub Release asset으로 올립니다. Repo에는 코드와 SQL dump만 커밋하고, `static/images` 압축 파일은 Release에 첨부합니다.
+
+압축:
+
+```powershell
+New-Item -ItemType Directory -Force release-assets
+Compress-Archive -Path .\static -DestinationPath .\release-assets\static-images-2026-07-01.zip -CompressionLevel Optimal -Force
+```
+
+다른 PC에서 복원:
+
+```powershell
+Expand-Archive .\static-images-2026-07-01.zip -DestinationPath . -Force
+```
+
+압축 파일 안에 `static/images/...` 구조가 들어가야 앱에서 DB의 `image_path`와 맞습니다.
+
+권장 release 흐름:
+
+1. 수집 완료
+2. DB SQL dump 생성
+3. `static/images` 압축
+4. 코드 + SQL dump 커밋
+5. 브랜치 push
+6. GitHub Release 생성
+7. 이미지 zip을 Release asset으로 첨부
+
+백필을 나중에 실행했다면 DB와 이미지가 다시 바뀌므로 SQL dump와 이미지 zip도 다시 만들어야 합니다.
+
+## Git Workflow
+
+임시 보존용 release와 최종 release를 분리하면 안전합니다.
+
+- 수집 직후: `v-data-prebackfill-YYYY-MM-DD`
+- 백필 후 최종본: `v-data-final-YYYY-MM-DD`
+
+Release는 브랜치가 아니라 태그에 붙습니다. `sh` 브랜치 기준으로 임시 release를 만들어도 나중에 `develop` 또는 `main`에 merge할 수 있습니다. 최종 배포용 release는 merge 이후 `develop` 또는 `main` 최신 커밋 기준으로 새로 만드는 것을 권장합니다.
+
+## Default Accounts
+
+`schema.sql` 초기 데이터 기준:
+
+- User: `demo` / `demo1234`
+- Admin: `admin` / `admin1234`
+
+## Notes
+
+- API 키와 DB 비밀번호는 커밋하지 않습니다.
+- 채팅, 캡처, 발표 자료에 실제 API 키가 노출되면 재발급을 고려합니다.
+- `static/images`를 커밋하지 않기 때문에 다른 PC에서는 반드시 Release zip을 받아 압축 해제해야 사진이 보입니다.
+- DB만 복원하고 이미지를 풀지 않으면 화면에는 이미지 경로만 있고 실제 사진은 표시되지 않습니다.

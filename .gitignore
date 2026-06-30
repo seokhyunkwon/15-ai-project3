@@ -5,3 +5,6 @@ __pycache__/
 logs/
 outputs/
 .codex_kor_manual/
+static/images/
+release-assets/
+*.zip
