@@ -1,19 +1,49 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 import os
+from pathlib import Path
+import tomllib
 from typing import Any
 from urllib.parse import unquote
 
 import requests
 from bs4 import BeautifulSoup
 
+import database as db
+
 
 TOUR_API_BASE_URL = "https://apis.data.go.kr/B551011/KorService2"
 TOUR_API_FESTIVAL_URL = "https://apis.data.go.kr/B551011/KorService2/searchFestival2"
 TOUR_API_AREA_BASED_URL = f"{TOUR_API_BASE_URL}/areaBasedList2"
 VISITKOREA_FESTIVAL_URL = "https://korean.visitkorea.or.kr/kfes/list/wntyFstvlList.do"
+PHOTO_GALLERY_BASE_URL = "https://apis.data.go.kr/B551011/PhotoGalleryService1"
+DATA_LAB_BASE_URL = "https://apis.data.go.kr/B551011/DataLabService"
+TOUR_API_PROVIDER_BASE_URL = "https://apis.data.go.kr/B551011"
 
+
+TOURAPI_REGION_META = {
+    "서울": {"areaCode": "1", "province": "서울특별시", "description": "도심 문화, 궁궐, 쇼핑, 야간 명소가 풍부한 지역"},
+    "부산": {"areaCode": "6", "province": "부산광역시", "description": "바다, 시장, 영화, 야경 코스가 풍부한 지역"},
+    "대구": {"areaCode": "4", "province": "대구광역시", "description": "도심 미식, 근대골목, 산책 코스가 있는 지역"},
+    "인천": {"areaCode": "2", "province": "인천광역시", "description": "섬, 항구, 차이나타운, 공항 접근성이 좋은 지역"},
+    "광주": {"areaCode": "5", "province": "광주광역시", "description": "예술, 역사, 미식 여행에 어울리는 지역"},
+    "대전": {"areaCode": "3", "province": "대전광역시", "description": "과학, 도심 산책, 근교 자연을 함께 볼 수 있는 지역"},
+    "울산": {"areaCode": "7", "province": "울산광역시", "description": "해안, 산업관광, 산악 경관이 함께 있는 지역"},
+    "세종": {"areaCode": "8", "province": "세종특별자치시", "description": "도심 공원과 행정도시 기반의 산책 코스가 있는 지역"},
+    "경기": {"areaCode": "31", "province": "경기도", "description": "수도권 근교 여행지와 가족형 관광지가 많은 지역"},
+    "강원": {"areaCode": "32", "province": "강원특별자치도", "description": "산, 바다, 호수, 계절 여행지가 풍부한 지역"},
+    "충북": {"areaCode": "33", "province": "충청북도", "description": "호수, 산림, 내륙 휴양 코스가 좋은 지역"},
+    "충남": {"areaCode": "34", "province": "충청남도", "description": "서해안, 온천, 역사 도시가 있는 지역"},
+    "경북": {"areaCode": "35", "province": "경상북도", "description": "역사 유산과 전통 문화 여행지가 풍부한 지역"},
+    "경남": {"areaCode": "36", "province": "경상남도", "description": "남해안, 섬, 역사 도시를 함께 볼 수 있는 지역"},
+    "전북": {"areaCode": "37", "province": "전북특별자치도", "description": "한옥, 미식, 산악 경관이 어울리는 지역"},
+    "전남": {"areaCode": "38", "province": "전라남도", "description": "섬, 남도 미식, 해안 관광지가 풍부한 지역"},
+    "제주": {"areaCode": "39", "province": "제주특별자치도", "description": "자연 경관과 드라이브 코스가 풍부한 지역"},
+    "경주": {"areaCode": "35", "sigunguCode": "2", "province": "경상북도", "description": "신라 역사 유적과 야간 산책 코스가 강한 지역"},
+    "강릉": {"areaCode": "32", "sigunguCode": "1", "province": "강원특별자치도", "description": "바다, 커피거리, 자연 휴식 코스가 좋은 지역"},
+}
 
 REGION_NAME_TO_ID = {
     "서울": 1,
@@ -21,15 +51,22 @@ REGION_NAME_TO_ID = {
     "경주": 3,
     "제주": 4,
     "강릉": 5,
+    "대구": 6,
+    "인천": 7,
+    "광주": 8,
+    "대전": 9,
+    "울산": 10,
+    "세종": 11,
+    "경기": 12,
+    "강원": 13,
+    "충북": 14,
+    "충남": 15,
+    "전북": 16,
+    "전남": 17,
+    "경북": 18,
+    "경남": 19,
 }
-
-TOURAPI_REGION_CODES = {
-    1: {"areaCode": "1"},
-    2: {"areaCode": "6"},
-    3: {"areaCode": "35", "sigunguCode": "2"},
-    4: {"areaCode": "39"},
-    5: {"areaCode": "32", "sigunguCode": "1"},
-}
+TOURAPI_REGION_CODES = {REGION_NAME_TO_ID[name]: {key: value for key, value in meta.items() if key in {"areaCode", "sigunguCode"}} for name, meta in TOURAPI_REGION_META.items()}
 
 TOURAPI_CONTENT_TYPES = {
     "관광지": "12",
@@ -53,6 +90,83 @@ INDOOR_HINTS = ("박물관", "전시", "미술관", "기념관", "센터", "몰"
 OUTDOOR_HINTS = ("해수욕장", "해변", "공원", "숲", "산", "봉", "길", "전망대", "광장", "섬", "폭포", "호수", "야외")
 CAFE_HINTS = ("카페", "커피", "로스터", "디저트")
 
+APPROVED_API_SERVICES = {
+    "KOR": {
+        "name": "한국관광공사_국문 관광정보 서비스_GW",
+        "data_go_kr_id": "15101578",
+        "storage": "places, festivals, restaurants, accommodations, place_categories",
+    },
+    "PHOTOG": {
+        "name": "한국관광공사_관광사진 정보_GW",
+        "data_go_kr_id": "15101914",
+        "storage": "tour_photos",
+        "endpoints": [
+            f"{PHOTO_GALLERY_BASE_URL}/gallerySearchList1",
+            f"{PHOTO_GALLERY_BASE_URL}/galleryList1",
+        ],
+    },
+    "DATALAB": {
+        "name": "한국관광공사_빅데이터_지역별 방문자수_GW",
+        "data_go_kr_id": "15101972",
+        "storage": "region_visitor_stats",
+        "endpoints": [
+            f"{DATA_LAB_BASE_URL}/metcoRegnVisitrDDList",
+            f"{DATA_LAB_BASE_URL}/locgoRegnVisitrDDList",
+            f"{DATA_LAB_BASE_URL}/metcoRegnVisitrMMList",
+        ],
+    },
+    "TATSCNCTR": {
+        "name": "한국관광공사_관광지 집중률 방문자 추이 예측 정보",
+        "data_go_kr_id": "15128555",
+        "storage": "attraction_concentration",
+        "endpoints": [
+            f"{TOUR_API_PROVIDER_BASE_URL}/TatsCnctrService1/tatsCnctrList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/TatsCnctrService/tatsCnctrList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/TatsCnctrService1/getTatsCnctrList",
+        ],
+    },
+    "TARRLTE": {
+        "name": "한국관광공사_관광지별 연관 관광지 정보",
+        "data_go_kr_id": "15128560",
+        "storage": "related_attractions",
+        "endpoints": [
+            f"{TOUR_API_PROVIDER_BASE_URL}/TarRlteService1/tarRlteList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/TatsRlteService1/tatsRlteList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/TarRlteService1/getTarRlteList",
+        ],
+    },
+    "LOCGOHUB": {
+        "name": "한국관광공사_기초지자체 중심 관광지 정보",
+        "data_go_kr_id": "15128559",
+        "storage": "center_attractions",
+        "endpoints": [
+            f"{TOUR_API_PROVIDER_BASE_URL}/LocgoHubService1/locgoHubList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/LocgoHubService/locgoHubList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/LocgoHubService1/getLocgoHubList",
+        ],
+    },
+    "DMANDDVRST": {
+        "name": "한국관광공사_지역별 관광 다양성",
+        "data_go_kr_id": "15151365",
+        "storage": "regional_demand_metrics",
+        "endpoints": [
+            f"{TOUR_API_PROVIDER_BASE_URL}/DemandDvrstService1/demandDvrstList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/DmandDvrstService1/dmandDvrstList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/DemandDvrstService1/getDemandDvrstList",
+        ],
+    },
+    "DMANDRESR": {
+        "name": "한국관광공사_지역별 관광 자원 수요",
+        "data_go_kr_id": "15152138",
+        "storage": "regional_demand_metrics",
+        "endpoints": [
+            f"{TOUR_API_PROVIDER_BASE_URL}/DemandResrService1/demandResrList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/DmandResrService1/dmandResrList",
+            f"{TOUR_API_PROVIDER_BASE_URL}/DemandResrService1/getDemandResrList",
+        ],
+    },
+}
+
 
 def _safe_text(value: Any) -> str | None:
     if value is None:
@@ -73,6 +187,22 @@ def configured_tourapi_key() -> str | None:
         value = _safe_text(os.getenv(name))
         if value:
             return value
+    secrets_path = Path(".streamlit") / "secrets.toml"
+    if secrets_path.exists():
+        try:
+            values = tomllib.loads(secrets_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            values = {}
+        for name in (
+            "TOUR_API_SERVICE_KEY",
+            "TOURAPI_SERVICE_KEY",
+            "DATA_GO_KR_SERVICE_KEY",
+            "VISITKOREA_PHOTO_SERVICE_KEY",
+            "VISITKOREA_BIGDATA_SERVICE_KEY",
+        ):
+            value = _safe_text(values.get(name))
+            if value:
+                return value
     return None
 
 
@@ -106,6 +236,113 @@ def _tourapi_items(endpoint_url: str, service_key: str, params: dict[str, Any]) 
     if isinstance(items, dict):
         return [items]
     return items or []
+
+
+def _extract_items(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    candidates = [
+        payload.get("response", {}).get("body", {}).get("items", {}).get("item"),
+        payload.get("response", {}).get("body", {}).get("items"),
+        payload.get("body", {}).get("items", {}).get("item"),
+        payload.get("body", {}).get("items"),
+        payload.get("items", {}).get("item") if isinstance(payload.get("items"), dict) else payload.get("items"),
+        payload.get("data"),
+        payload.get("result"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            return [candidate]
+        if isinstance(candidate, list):
+            return [item for item in candidate if isinstance(item, dict)]
+    return []
+
+
+def _tourapi_items_any(endpoint_url: str, service_key: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    request_params = {
+        "serviceKey": _normalize_service_key(service_key),
+        "MobileOS": "ETC",
+        "MobileApp": "TravelCourseStreamlit",
+        "_type": "json",
+    }
+    request_params.update({key: value for key, value in params.items() if value is not None})
+    response = requests.get(endpoint_url, params=request_params, timeout=10)
+    response.raise_for_status()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError(f"TourAPI JSON 응답을 읽지 못했습니다: {response.text[:160]}") from exc
+
+    header = payload.get("response", {}).get("header", {}) if isinstance(payload, dict) else {}
+    result_code = str(header.get("resultCode", "0000"))
+    if result_code not in {"0000", "0"}:
+        result_message = header.get("resultMsg") or "TourAPI 요청 실패"
+        raise ValueError(f"TourAPI 오류 {result_code}: {result_message}")
+    return _extract_items(payload)
+
+
+def _try_api_candidates(
+    service_key: str,
+    endpoint_urls: list[str],
+    params: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str | None, str, str]:
+    errors: list[str] = []
+    for endpoint_url in endpoint_urls:
+        try:
+            items = _tourapi_items_any(endpoint_url, service_key, params)
+        except Exception as exc:
+            errors.append(f"{endpoint_url.rsplit('/', 1)[-1]}: {exc}")
+            continue
+        if items:
+            return items, endpoint_url, "SUCCESS", f"{len(items)}건 수신"
+        errors.append(f"{endpoint_url.rsplit('/', 1)[-1]}: empty")
+    message = " / ".join(errors[:4]) if errors else "응답이 비어 있습니다."
+    return [], endpoint_urls[0] if endpoint_urls else None, "FAILED", message
+
+
+def _coalesce(item: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = item.get(key)
+        if _safe_text(value):
+            return value
+    return None
+
+
+def _numeric_value(item: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = item.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            return float(str(value).replace(",", ""))
+        except ValueError:
+            continue
+    return None
+
+
+def _first_numeric_field(item: dict[str, Any], excluded: set[str] | None = None) -> tuple[str | None, float | None]:
+    excluded = excluded or set()
+    for key, value in item.items():
+        if key in excluded or value in (None, ""):
+            continue
+        try:
+            return key, float(str(value).replace(",", ""))
+        except ValueError:
+            continue
+    return None, None
+
+
+def _region_name_from_item(item: dict[str, Any]) -> str:
+    parts = [
+        _safe_text(_coalesce(item, "areaNm", "areaName", "sidoNm", "ctprvnNm", "signguNm", "sigunguNm", "regionName")),
+        _safe_text(_coalesce(item, "signguNm", "sigunguName", "sggNm")),
+    ]
+    clean_parts = [part for part in parts if part]
+    return " ".join(dict.fromkeys(clean_parts)) or "지역 미상"
+
+
+def _raw_json(item: dict[str, Any]) -> str:
+    return json.dumps(item, ensure_ascii=False, default=str)
 
 
 def _to_float(value: Any) -> float | None:
@@ -157,6 +394,56 @@ def _first_image(item: dict[str, Any]) -> str | None:
     return _safe_text(item.get("firstimage")) or _safe_text(item.get("firstimage2"))
 
 
+def ensure_known_regions(region_names: list[str] | None = None) -> dict[str, int]:
+    target_names = region_names or list(TOURAPI_REGION_META.keys())
+    region_ids: dict[str, int] = {}
+    for region_name in target_names:
+        meta = TOURAPI_REGION_META.get(region_name)
+        if not meta:
+            continue
+        try:
+            region_ids[region_name] = db.ensure_region(region_name, meta.get("province"), meta.get("description"))
+        except Exception:
+            fallback_id = REGION_NAME_TO_ID.get(region_name)
+            if fallback_id:
+                region_ids[region_name] = fallback_id
+    return region_ids
+
+
+def _region_codes_for_name(region_name: str) -> dict[str, str] | None:
+    meta = TOURAPI_REGION_META.get(region_name)
+    if not meta:
+        return None
+    return {key: str(value) for key, value in meta.items() if key in {"areaCode", "sigunguCode"}}
+
+
+def _region_specs(region_names: list[str] | None = None, region_ids: list[int] | None = None) -> list[tuple[str, int, dict[str, str]]]:
+    if region_names:
+        target_names = [name for name in region_names if name in TOURAPI_REGION_META]
+    elif region_ids:
+        id_to_name = {region_id: region_name for region_name, region_id in REGION_NAME_TO_ID.items()}
+        target_names = [id_to_name[region_id] for region_id in region_ids if region_id in id_to_name]
+    else:
+        target_names = list(TOURAPI_REGION_META.keys())
+
+    ensured_ids = ensure_known_regions(target_names)
+    specs: list[tuple[str, int, dict[str, str]]] = []
+    for region_name in target_names:
+        region_id = ensured_ids.get(region_name)
+        codes = _region_codes_for_name(region_name)
+        if region_id and codes:
+            specs.append((region_name, region_id, codes))
+    return specs
+
+
+def _region_id_from_address(address: str) -> int:
+    for region_name in TOURAPI_REGION_META:
+        if region_name in address:
+            ids = ensure_known_regions([region_name])
+            return ids.get(region_name, REGION_NAME_TO_ID.get(region_name, 1))
+    return REGION_NAME_TO_ID.get("서울", 1)
+
+
 def fetch_tourapi_festivals(service_key: str, limit: int = 20) -> list[dict[str, Any]]:
     params = {
         "eventStartDate": date.today().strftime("%Y%m%d"),
@@ -169,11 +456,7 @@ def fetch_tourapi_festivals(service_key: str, limit: int = 20) -> list[dict[str,
     festivals: list[dict[str, Any]] = []
     for item in items[:limit]:
         addr = _safe_text(item.get("addr1")) or ""
-        region_id = 1
-        for region_name, mapped_id in REGION_NAME_TO_ID.items():
-            if region_name in addr:
-                region_id = mapped_id
-                break
+        region_id = _region_id_from_address(addr)
         festivals.append(
             {
                 "region_id": region_id,
@@ -195,8 +478,9 @@ def fetch_tourapi_area_places(
     region_id: int,
     content_type_id: str = "12",
     limit: int = 20,
+    region_codes: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    region_codes = TOURAPI_REGION_CODES.get(region_id)
+    region_codes = region_codes or TOURAPI_REGION_CODES.get(region_id)
     if not region_codes:
         return []
 
@@ -282,20 +566,29 @@ def collect_tourapi_places(
 def collect_tourapi_full_dataset(
     service_key: str,
     region_ids: list[int] | None = None,
+    region_names: list[str] | None = None,
     limit_per_type: int = 35,
     festival_limit: int = 100,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, str]:
-    target_region_ids = region_ids or list(TOURAPI_REGION_CODES.keys())
+    target_regions = _region_specs(region_names=region_names, region_ids=region_ids)
     places: list[dict[str, Any]] = []
     festivals: list[dict[str, Any]] = []
     errors: list[str] = []
 
-    for region_id in target_region_ids:
+    for region_name, region_id, region_codes in target_regions:
         for content_type_id in FULL_COLLECTION_CONTENT_TYPES:
             try:
-                places.extend(fetch_tourapi_area_places(service_key, region_id, content_type_id, limit_per_type))
+                places.extend(
+                    fetch_tourapi_area_places(
+                        service_key,
+                        region_id,
+                        content_type_id,
+                        limit_per_type,
+                        region_codes=region_codes,
+                    )
+                )
             except Exception as exc:
-                errors.append(f"region {region_id} type {content_type_id}: {exc}")
+                errors.append(f"{region_name} type {content_type_id}: {exc}")
 
     try:
         festivals = fetch_tourapi_festivals(service_key, festival_limit)
@@ -314,6 +607,298 @@ def collect_tourapi_full_dataset(
     if errors:
         message += " " + " / ".join(errors[:5])
     return [], [], "FAILED", message
+
+
+def _previous_month_params(limit: int) -> dict[str, Any]:
+    today = date.today()
+    month = today.month - 1
+    year = today.year
+    if month == 0:
+        month = 12
+        year -= 1
+    base_ym = f"{year}{month:02d}"
+    return {
+        "numOfRows": max(1, min(int(limit), 100)),
+        "pageNo": 1,
+        "baseYm": base_ym,
+        "startYm": base_ym,
+        "endYm": base_ym,
+        "baseYmd": f"{base_ym}01",
+        "startYmd": f"{base_ym}01",
+        "endYmd": f"{base_ym}28",
+    }
+
+
+def fetch_tour_photos(service_key: str, keyword: str | None = None, limit: int = 30) -> tuple[list[dict[str, Any]], str | None, str, str]:
+    params: dict[str, Any] = {
+        "numOfRows": max(1, min(int(limit), 100)),
+        "pageNo": 1,
+        "arrange": "A",
+    }
+    if keyword:
+        params["keyword"] = keyword
+    service = APPROVED_API_SERVICES["PHOTOG"]
+    return _try_api_candidates(service_key, service["endpoints"], params)
+
+
+def _photo_row(item: dict[str, Any], keyword: str | None = None) -> dict[str, Any]:
+    title = _safe_text(_coalesce(item, "galTitle", "title", "photoTitle", "cntntsNm")) or "제목 없음"
+    location = _safe_text(_coalesce(item, "galPhotographyLocation", "photographyLocation", "location", "addr1"))
+    keywords = _safe_text(_coalesce(item, "galSearchKeyword", "keywords", "tag", "searchKeyword"))
+    region_name = keyword if keyword and keyword in " ".join([title, location or "", keywords or ""]) else None
+    return {
+        "external_id": _safe_text(_coalesce(item, "galContentId", "contentId", "photoId", "id")),
+        "region_name": region_name,
+        "place_name": title[:150],
+        "title": title[:200],
+        "image_url": _safe_text(_coalesce(item, "galWebImageUrl", "webImageUrl", "imageUrl", "imgUrl", "firstimage")),
+        "location": location,
+        "photographer": _safe_text(_coalesce(item, "galPhotographer", "photographer")),
+        "shot_date": _safe_text(_coalesce(item, "galPhotographyMonth", "photographyMonth", "shotDate", "createdtime")),
+        "keywords": keywords,
+        "raw_json": item,
+    }
+
+
+def _save_tour_photos(rows: list[dict[str, Any]], keyword: str | None = None) -> int:
+    saved = 0
+    for item in rows:
+        try:
+            db.upsert_tour_photo(_photo_row(item, keyword))
+            saved += 1
+        except Exception:
+            continue
+    return saved
+
+
+def _save_visitor_rows(items: list[dict[str, Any]], source_api: str) -> int:
+    saved = 0
+    excluded = {"areaCode", "signguCode", "areaNm", "signguNm", "baseYmd", "baseYm", "daywkDivCd", "daywkDivNm", "touDivCd", "touDivNm"}
+    for item in items:
+        metric_name, fallback_value = _first_numeric_field(item, excluded)
+        try:
+            db.upsert_region_visitor_stat(
+                {
+                    "source_api": source_api,
+                    "region_name": _region_name_from_item(item),
+                    "stat_date": _safe_text(_coalesce(item, "baseYmd", "baseYm", "stdYmd", "stdYm")),
+                    "visitor_type": _safe_text(_coalesce(item, "touDivNm", "visitorType", "typeNm", "daywkDivNm", metric_name or "")),
+                    "visitor_count": _numeric_value(item, "touNum", "visitorCount", "visitrCnt", "cnt", "totalCnt") or fallback_value,
+                    "raw_json": item,
+                }
+            )
+            saved += 1
+        except Exception:
+            continue
+    return saved
+
+
+def _save_concentration_rows(items: list[dict[str, Any]]) -> int:
+    saved = 0
+    for item in items:
+        name = _safe_text(_coalesce(item, "tAtsNm", "tatsNm", "tourspotNm", "poiNm", "attractionName", "rlteTatsNm"))
+        if not name:
+            continue
+        try:
+            db.upsert_attraction_concentration(
+                {
+                    "attraction_name": name[:180],
+                    "region_name": _region_name_from_item(item),
+                    "base_date": _safe_text(_coalesce(item, "baseYmd", "baseYm", "stdYmd")),
+                    "forecast_date": _safe_text(_coalesce(item, "fcstYmd", "forecastYmd", "predYmd", "baseYmd")),
+                    "concentration_score": _numeric_value(item, "cnctrRate", "cnctrScore", "concentrationRate", "predictionValue", "rate"),
+                    "raw_json": item,
+                }
+            )
+            saved += 1
+        except Exception:
+            continue
+    return saved
+
+
+def _save_related_rows(items: list[dict[str, Any]]) -> int:
+    saved = 0
+    for item in items:
+        origin = _safe_text(_coalesce(item, "baseTatsNm", "originName", "hubTatsNm", "tAtsNm", "tatsNm"))
+        related = _safe_text(_coalesce(item, "rlteTatsNm", "relatedName", "rlteNm", "rlteTatsName", "poiNm"))
+        if not origin or not related or origin == related:
+            continue
+        try:
+            db.upsert_related_attraction(
+                {
+                    "origin_name": origin[:180],
+                    "related_name": related[:180],
+                    "relation_type": _safe_text(_coalesce(item, "rlteCtgryNm", "rlteType", "category", "typeNm")),
+                    "rank_no": _coalesce(item, "rlteRank", "rank", "rankNo", "rnum"),
+                    "score": _numeric_value(item, "score", "rlteScore", "naviCnt", "searchCnt", "srchCnt"),
+                    "region_name": _region_name_from_item(item),
+                    "raw_json": item,
+                }
+            )
+            saved += 1
+        except Exception:
+            continue
+    return saved
+
+
+def _save_center_rows(items: list[dict[str, Any]]) -> int:
+    saved = 0
+    for item in items:
+        name = _safe_text(_coalesce(item, "hubTatsNm", "tAtsNm", "tatsNm", "tourspotNm", "poiNm", "attractionName"))
+        if not name:
+            continue
+        try:
+            db.upsert_center_attraction(
+                {
+                    "region_name": _region_name_from_item(item),
+                    "attraction_name": name[:180],
+                    "rank_no": _coalesce(item, "hubRank", "rank", "rankNo", "rnum"),
+                    "navi_count": _numeric_value(item, "naviCnt", "srchCnt", "searchCnt", "visitCnt", "cnt"),
+                    "raw_json": item,
+                }
+            )
+            saved += 1
+        except Exception:
+            continue
+    return saved
+
+
+def _save_regional_metric_rows(items: list[dict[str, Any]], source_api: str, metric_group: str) -> int:
+    saved = 0
+    excluded = {
+        "areaCode",
+        "signguCode",
+        "areaNm",
+        "signguNm",
+        "sidoNm",
+        "ctprvnNm",
+        "baseYmd",
+        "baseYm",
+        "stdYmd",
+        "stdYm",
+        "rnum",
+    }
+    for item in items:
+        region_name = _region_name_from_item(item)
+        stat_date = _safe_text(_coalesce(item, "baseYmd", "baseYm", "stdYmd", "stdYm"))
+        for key, value in item.items():
+            if key in excluded or value in (None, ""):
+                continue
+            try:
+                numeric_value = float(str(value).replace(",", ""))
+            except ValueError:
+                continue
+            try:
+                db.upsert_regional_demand_metric(
+                    {
+                        "source_api": source_api,
+                        "region_name": region_name,
+                        "metric_group": metric_group,
+                        "metric_name": key,
+                        "metric_value": numeric_value,
+                        "stat_date": stat_date,
+                        "raw_json": item,
+                    }
+                )
+                saved += 1
+            except Exception:
+                continue
+    return saved
+
+
+def _log_bundle_result(service_code: str, endpoint_url: str | None, status: str, count: int, message: str) -> dict[str, Any]:
+    service = APPROVED_API_SERVICES[service_code]
+    db.log_tour_api_usage(service_code, service["name"], endpoint_url, status, count, message)
+    return {
+        "service_code": service_code,
+        "service_name": service["name"],
+        "status": status,
+        "saved_count": count,
+        "message": message,
+        "endpoint_url": endpoint_url,
+    }
+
+
+def collect_approved_api_bundle(
+    service_key: str | None = None,
+    region_names: list[str] | None = None,
+    place_names: list[str] | None = None,
+    limit_per_type: int = 25,
+    advanced_limit: int = 80,
+    photo_limit_per_keyword: int = 12,
+) -> list[dict[str, Any]]:
+    key = service_key or configured_tourapi_key()
+    if not key:
+        raise ValueError("TOUR_API_SERVICE_KEY가 설정되어 있지 않습니다.")
+
+    db.ensure_recommendation_schema()
+    db.ensure_advanced_api_schema()
+    target_region_names = region_names or list(TOURAPI_REGION_META.keys())
+    ensure_known_regions(target_region_names)
+    results: list[dict[str, Any]] = []
+
+    try:
+        places, festivals, status, message = collect_tourapi_full_dataset(
+            key,
+            region_names=target_region_names,
+            limit_per_type=limit_per_type,
+            festival_limit=min(100, max(20, advanced_limit)),
+        )
+        saved = 0
+        for row in places:
+            try:
+                db.upsert_tourapi_place(row)
+                saved += 1
+            except Exception:
+                continue
+        for row in festivals:
+            try:
+                db.upsert_festival(row)
+                saved += 1
+            except Exception:
+                continue
+        results.append(_log_bundle_result("KOR", TOUR_API_AREA_BASED_URL, status, saved, message))
+    except Exception as exc:
+        results.append(_log_bundle_result("KOR", TOUR_API_AREA_BASED_URL, "FAILED", 0, str(exc)))
+
+    photo_saved = 0
+    photo_messages: list[str] = []
+    photo_endpoint: str | None = None
+    photo_keywords = list(dict.fromkeys([*target_region_names, *(place_names or [])]))[:30]
+    for keyword in photo_keywords:
+        items, endpoint_url, status, message = fetch_tour_photos(key, keyword, photo_limit_per_keyword)
+        photo_endpoint = endpoint_url or photo_endpoint
+        if status == "SUCCESS":
+            photo_saved += _save_tour_photos(items, keyword)
+        else:
+            photo_messages.append(f"{keyword}: {message}")
+    photo_status = "SUCCESS" if photo_saved else "FAILED"
+    photo_message = f"관광사진 {photo_saved}건 저장"
+    if photo_messages:
+        photo_message += " / 일부 실패: " + " / ".join(photo_messages[:3])
+    results.append(_log_bundle_result("PHOTOG", photo_endpoint, photo_status, photo_saved, photo_message))
+
+    generic_plan = [
+        ("DATALAB", _previous_month_params(advanced_limit), lambda items: _save_visitor_rows(items, "DATALAB")),
+        ("TATSCNCTR", _previous_month_params(advanced_limit), _save_concentration_rows),
+        ("TARRLTE", _previous_month_params(advanced_limit), _save_related_rows),
+        ("LOCGOHUB", _previous_month_params(advanced_limit), _save_center_rows),
+        ("DMANDDVRST", _previous_month_params(advanced_limit), lambda items: _save_regional_metric_rows(items, "DMANDDVRST", "관광 다양성")),
+        ("DMANDRESR", _previous_month_params(advanced_limit), lambda items: _save_regional_metric_rows(items, "DMANDRESR", "관광 자원 수요")),
+    ]
+    for service_code, params, saver in generic_plan:
+        service = APPROVED_API_SERVICES[service_code]
+        items, endpoint_url, status, message = _try_api_candidates(key, service["endpoints"], params)
+        saved_count = 0
+        if status == "SUCCESS":
+            try:
+                saved_count = saver(items)
+            except Exception as exc:
+                status = "FAILED"
+                message = f"저장 실패: {exc}"
+        results.append(_log_bundle_result(service_code, endpoint_url, status, saved_count, message))
+
+    return results
 
 
 def crawl_visitkorea_festival_titles(limit: int = 10) -> list[dict[str, Any]]:

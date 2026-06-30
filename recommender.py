@@ -148,6 +148,11 @@ def score_place(
             reasons.append(f"찜한 {category} 카테고리와 비슷한 장소입니다.")
             break
 
+    api_score_boost = safe_float(scored.get("api_score_boost"))
+    if api_score_boost:
+        score += min(api_score_boost, 24)
+        reasons.extend(safe_text(reason) for reason in scored.get("api_reasons") or [] if safe_text(reason))
+
     if not reasons:
         reasons.append("지역과 기본 조건에 맞는 후보 장소입니다.")
 

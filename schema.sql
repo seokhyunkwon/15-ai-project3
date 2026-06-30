@@ -17,6 +17,13 @@ DROP TABLE IF EXISTS places;
 DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS regions;
 DROP TABLE IF EXISTS crawl_logs;
+DROP TABLE IF EXISTS regional_demand_metrics;
+DROP TABLE IF EXISTS center_attractions;
+DROP TABLE IF EXISTS related_attractions;
+DROP TABLE IF EXISTS attraction_concentration;
+DROP TABLE IF EXISTS region_visitor_stats;
+DROP TABLE IF EXISTS tour_photos;
+DROP TABLE IF EXISTS tour_api_usage_logs;
 DROP TABLE IF EXISTS members;
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -180,6 +187,108 @@ CREATE TABLE crawl_logs (
   crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE tour_api_usage_logs (
+  log_id INT AUTO_INCREMENT PRIMARY KEY,
+  service_code VARCHAR(40) NOT NULL,
+  service_name VARCHAR(120) NOT NULL,
+  endpoint_url VARCHAR(500) NULL,
+  status VARCHAR(30) NOT NULL,
+  fetched_count INT NOT NULL DEFAULT 0,
+  message VARCHAR(700) NULL,
+  collected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_tour_api_usage_service (service_code, collected_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE tour_photos (
+  photo_id INT AUTO_INCREMENT PRIMARY KEY,
+  external_id VARCHAR(120) NULL,
+  region_name VARCHAR(80) NULL,
+  place_name VARCHAR(150) NULL,
+  title VARCHAR(200) NOT NULL,
+  image_url VARCHAR(700) NULL,
+  location VARCHAR(255) NULL,
+  photographer VARCHAR(120) NULL,
+  shot_date VARCHAR(30) NULL,
+  keywords VARCHAR(500) NULL,
+  raw_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_tour_photos_external (external_id),
+  INDEX idx_tour_photos_region (region_name),
+  INDEX idx_tour_photos_title (title)
+) ENGINE=InnoDB;
+
+CREATE TABLE region_visitor_stats (
+  visitor_stat_id INT AUTO_INCREMENT PRIMARY KEY,
+  source_api VARCHAR(80) NOT NULL,
+  region_name VARCHAR(80) NOT NULL,
+  stat_date VARCHAR(20) NULL,
+  visitor_type VARCHAR(80) NULL,
+  visitor_count DECIMAL(18, 2) NULL,
+  raw_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_region_visitor (source_api, region_name, stat_date, visitor_type),
+  INDEX idx_region_visitor_region (region_name),
+  INDEX idx_region_visitor_date (stat_date)
+) ENGINE=InnoDB;
+
+CREATE TABLE attraction_concentration (
+  concentration_id INT AUTO_INCREMENT PRIMARY KEY,
+  attraction_name VARCHAR(180) NOT NULL,
+  region_name VARCHAR(80) NULL,
+  base_date VARCHAR(20) NULL,
+  forecast_date VARCHAR(20) NULL,
+  concentration_score DECIMAL(10, 2) NULL,
+  raw_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_attraction_concentration (attraction_name, forecast_date),
+  INDEX idx_attraction_concentration_region (region_name),
+  INDEX idx_attraction_concentration_name (attraction_name)
+) ENGINE=InnoDB;
+
+CREATE TABLE related_attractions (
+  related_id INT AUTO_INCREMENT PRIMARY KEY,
+  origin_name VARCHAR(180) NOT NULL,
+  related_name VARCHAR(180) NOT NULL,
+  relation_type VARCHAR(80) NULL,
+  rank_no INT NULL,
+  score DECIMAL(12, 2) NULL,
+  region_name VARCHAR(80) NULL,
+  raw_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_related_attractions (origin_name, related_name, relation_type),
+  INDEX idx_related_region (region_name),
+  INDEX idx_related_origin (origin_name),
+  INDEX idx_related_name (related_name)
+) ENGINE=InnoDB;
+
+CREATE TABLE center_attractions (
+  center_id INT AUTO_INCREMENT PRIMARY KEY,
+  region_name VARCHAR(80) NOT NULL,
+  attraction_name VARCHAR(180) NOT NULL,
+  rank_no INT NULL,
+  navi_count DECIMAL(18, 2) NULL,
+  raw_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_center_attractions (region_name, attraction_name),
+  INDEX idx_center_region (region_name),
+  INDEX idx_center_rank (rank_no)
+) ENGINE=InnoDB;
+
+CREATE TABLE regional_demand_metrics (
+  demand_metric_id INT AUTO_INCREMENT PRIMARY KEY,
+  source_api VARCHAR(80) NOT NULL,
+  region_name VARCHAR(80) NOT NULL,
+  metric_group VARCHAR(80) NOT NULL,
+  metric_name VARCHAR(120) NOT NULL,
+  metric_value DECIMAL(18, 4) NULL,
+  stat_date VARCHAR(20) NULL,
+  raw_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_regional_demand_metric (source_api, region_name, metric_group, metric_name, stat_date),
+  INDEX idx_regional_demand_region (region_name),
+  INDEX idx_regional_demand_group (metric_group)
+) ENGINE=InnoDB;
+
 ALTER TABLE members
   ADD CONSTRAINT fk_members_preferred_region FOREIGN KEY (preferred_region_id) REFERENCES regions(region_id);
 
@@ -188,7 +297,21 @@ INSERT INTO regions (region_name, province, description) VALUES
 ('부산', '부산광역시', '바다, 영화, 시장, 야경 코스가 풍부한 지역'),
 ('경주', '경상북도', '역사 유적과 한옥 감성이 강한 지역'),
 ('제주', '제주특별자치도', '자연 경관과 드라이브 코스가 풍부한 지역'),
-('강릉', '강원특별자치도', '바다, 커피거리, 자연 휴식 코스가 좋은 지역');
+('강릉', '강원특별자치도', '바다, 커피거리, 자연 휴식 코스가 좋은 지역'),
+('대구', '대구광역시', '도심 미식, 근대골목, 산책 코스가 있는 지역'),
+('인천', '인천광역시', '섬, 항구, 차이나타운, 공항 접근성이 좋은 지역'),
+('광주', '광주광역시', '예술, 역사, 미식 여행에 어울리는 지역'),
+('대전', '대전광역시', '과학, 도심 산책, 근교 자연을 함께 볼 수 있는 지역'),
+('울산', '울산광역시', '해안, 산업관광, 산악 경관이 함께 있는 지역'),
+('세종', '세종특별자치시', '도심 공원과 행정도시 기반의 산책 코스가 있는 지역'),
+('경기', '경기도', '수도권 근교 여행지와 가족형 관광지가 많은 지역'),
+('강원', '강원특별자치도', '산, 바다, 호수, 계절 여행지가 풍부한 지역'),
+('충북', '충청북도', '호수, 산림, 내륙 휴양 코스가 좋은 지역'),
+('충남', '충청남도', '서해안, 온천, 역사 도시가 있는 지역'),
+('전북', '전북특별자치도', '한옥, 미식, 산악 경관이 어울리는 지역'),
+('전남', '전라남도', '섬, 남도 미식, 해안 관광지가 풍부한 지역'),
+('경북', '경상북도', '역사 유산과 전통 문화 여행지가 풍부한 지역'),
+('경남', '경상남도', '남해안, 섬, 역사 도시를 함께 볼 수 있는 지역');
 
 INSERT INTO categories (category_name, description) VALUES
 ('역사', '궁궐, 유적지, 박물관 중심'),
