@@ -7,6 +7,17 @@ import mysql.connector
 from mysql.connector import Error
 
 
+RECOMMENDATION_PLACE_COLUMNS = {
+    "image_url": "ALTER TABLE places ADD COLUMN image_url VARCHAR(500) NULL",
+    "tags": "ALTER TABLE places ADD COLUMN tags VARCHAR(500) NULL",
+    "indoor_outdoor": "ALTER TABLE places ADD COLUMN indoor_outdoor ENUM('실내', '야외', '혼합') NULL",
+    "recommended_for": "ALTER TABLE places ADD COLUMN recommended_for VARCHAR(255) NULL",
+    "budget_level": "ALTER TABLE places ADD COLUMN budget_level ENUM('저렴', '보통', '비쌈') NULL",
+    "opening_hours": "ALTER TABLE places ADD COLUMN opening_hours VARCHAR(255) NULL",
+    "source_api": "ALTER TABLE places ADD COLUMN source_api VARCHAR(80) NULL",
+}
+
+
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -77,6 +88,74 @@ def execute_many(query: str, rows: list[Iterable[Any]]) -> int:
         return count
 
 
+def get_table_columns(table_name: str) -> set[str]:
+    try:
+        rows = fetch_all(
+            """
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
+            """,
+            (table_name,),
+        )
+    except Error:
+        return set()
+    return {row["COLUMN_NAME"] for row in rows}
+
+
+def place_optional_selects(alias: str = "p") -> list[str]:
+    columns = get_table_columns("places")
+    selects = []
+    for column in RECOMMENDATION_PLACE_COLUMNS:
+        if column in columns:
+            selects.append(f"{alias}.{column}")
+        else:
+            selects.append(f"NULL AS {column}")
+    return selects
+
+
+def ensure_recommendation_schema() -> list[str]:
+    existing = get_table_columns("places")
+    results: list[str] = []
+    for column, sql in RECOMMENDATION_PLACE_COLUMNS.items():
+        if column in existing:
+            results.append(f"{column}: already exists")
+            continue
+        try:
+            execute(sql)
+            results.append(f"{column}: added")
+        except Error as exc:
+            results.append(f"{column}: skipped ({exc})")
+    return results
+
+
+def recommendation_schema_sql() -> str:
+    return ";\n".join(RECOMMENDATION_PLACE_COLUMNS.values()) + ";"
+
+
+def duplicate_cleanup_sql() -> str:
+    return """
+-- 같은 지역 안에서 이름이 같은 장소 중 가장 작은 place_id만 남기는 예시입니다.
+-- 실제 삭제 전 SELECT로 결과를 먼저 확인하세요.
+SELECT region_id, place_name, COUNT(*) AS duplicate_count
+FROM places
+GROUP BY region_id, place_name
+HAVING COUNT(*) > 1;
+
+DELETE p
+FROM places p
+JOIN (
+  SELECT region_id, place_name, MIN(place_id) AS keep_place_id
+  FROM places
+  GROUP BY region_id, place_name
+  HAVING COUNT(*) > 1
+) d
+  ON d.region_id = p.region_id
+ AND d.place_name = p.place_name
+ AND d.keep_place_id <> p.place_id;
+""".strip()
+
+
 def test_connection() -> tuple[bool, str]:
     try:
         with get_connection() as conn:
@@ -97,6 +176,17 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
         WHERE username = %s AND password_hash = %s
         """,
         (username, hash_password(password)),
+    )
+
+
+def get_member_by_username(username: str) -> dict[str, Any] | None:
+    return fetch_one(
+        """
+        SELECT member_id, username, name, email, role, preferred_region_id
+        FROM members
+        WHERE username = %s
+        """,
+        (username,),
     )
 
 
@@ -166,13 +256,22 @@ def search_places(region_id: int | None, category_id: int | None, keyword: str =
         filters.append("p.region_id = %s")
         params.append(region_id)
     if category_id:
-        filters.append("pc.category_id = %s")
+        filters.append(
+            """
+            EXISTS (
+              SELECT 1
+              FROM place_categories pc_filter
+              WHERE pc_filter.place_id = p.place_id AND pc_filter.category_id = %s
+            )
+            """
+        )
         params.append(category_id)
     if keyword:
         filters.append("(p.place_name LIKE %s OR p.overview LIKE %s OR p.address LIKE %s)")
         like = f"%{keyword}%"
         params.extend([like, like, like])
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
+    optional_selects = ",\n          ".join(place_optional_selects("p"))
     return fetch_all(
         f"""
         SELECT
@@ -181,16 +280,26 @@ def search_places(region_id: int | None, category_id: int | None, keyword: str =
           r.region_name,
           p.address,
           p.overview,
+          p.phone,
+          p.latitude,
+          p.longitude,
+          p.source_url,
           p.average_rating,
-          GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ') AS categories,
-          COUNT(DISTINCT rv.review_id) AS review_count
+          {optional_selects},
+          (
+            SELECT GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ')
+            FROM place_categories pc
+            JOIN categories c ON c.category_id = pc.category_id
+            WHERE pc.place_id = p.place_id
+          ) AS categories,
+          (
+            SELECT COUNT(*)
+            FROM reviews rv
+            WHERE rv.place_id = p.place_id
+          ) AS review_count
         FROM places p
         JOIN regions r ON r.region_id = p.region_id
-        LEFT JOIN place_categories pc ON pc.place_id = p.place_id
-        LEFT JOIN categories c ON c.category_id = pc.category_id
-        LEFT JOIN reviews rv ON rv.place_id = p.place_id
         {where_sql}
-        GROUP BY p.place_id, p.place_name, r.region_name, p.address, p.overview, p.average_rating
         ORDER BY p.average_rating DESC, p.place_name
         """,
         params,
@@ -244,6 +353,25 @@ def get_favorites(member_id: int) -> list[dict[str, Any]]:
         """,
         (member_id,),
     )
+
+
+def favorite_category_counts(member_id: int) -> dict[str, int]:
+    try:
+        rows = fetch_all(
+            """
+            SELECT c.category_name, COUNT(*) AS favorite_count
+            FROM favorites f
+            JOIN place_categories pc ON pc.place_id = f.place_id
+            JOIN categories c ON c.category_id = pc.category_id
+            WHERE f.member_id = %s
+            GROUP BY c.category_id, c.category_name
+            ORDER BY favorite_count DESC
+            """,
+            (member_id,),
+        )
+    except Error:
+        return {}
+    return {row["category_name"]: int(row["favorite_count"] or 0) for row in rows}
 
 
 def create_course(member_id: int, title: str, region_id: int, place_ids: list[int], start_date: Any, end_date: Any) -> int:
@@ -329,32 +457,128 @@ def recommend_places(region_id: int, category_id: int | None, limit: int = 5) ->
     )
 
 
-def upsert_place(row: dict[str, Any]) -> None:
+def ensure_category(category_name: str, description: str | None = None) -> int:
+    existing = fetch_one("SELECT category_id FROM categories WHERE category_name = %s", (category_name,))
+    if existing:
+        return int(existing["category_id"])
+    return execute(
+        "INSERT INTO categories (category_name, description) VALUES (%s, %s)",
+        (category_name, description),
+    )
+
+
+def link_place_category(place_id: int, category_id: int) -> None:
     execute(
         """
-        INSERT INTO places (region_id, place_name, address, overview, phone, latitude, longitude, source_url, external_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT IGNORE INTO place_categories (place_id, category_id)
+        VALUES (%s, %s)
+        """,
+        (place_id, category_id),
+    )
+
+
+def upsert_place(row: dict[str, Any]) -> int:
+    base_columns = [
+        "region_id",
+        "place_name",
+        "address",
+        "overview",
+        "phone",
+        "latitude",
+        "longitude",
+        "source_url",
+        "external_id",
+    ]
+    place_columns = get_table_columns("places")
+    optional_columns = [column for column in RECOMMENDATION_PLACE_COLUMNS if column in place_columns]
+    columns = base_columns + optional_columns
+    placeholders = ", ".join(["%s"] * len(columns))
+    update_columns = [column for column in columns if column not in {"region_id", "place_name"}]
+    update_sql = ",\n          ".join(f"{column} = VALUES({column})" for column in update_columns)
+    params = tuple(row.get(column) for column in columns)
+
+    execute(
+        f"""
+        INSERT INTO places ({", ".join(columns)})
+        VALUES ({placeholders})
+        ON DUPLICATE KEY UPDATE
+          {update_sql}
+        """,
+        params,
+    )
+    saved = fetch_one(
+        """
+        SELECT place_id
+        FROM places
+        WHERE region_id = %s AND place_name = %s
+        """,
+        (row["region_id"], row["place_name"]),
+    )
+    return int(saved["place_id"]) if saved else 0
+
+
+def upsert_place_with_categories(row: dict[str, Any]) -> int:
+    place_id = upsert_place(row)
+    for category_name in row.get("category_names") or []:
+        clean_name = str(category_name).strip()
+        if not clean_name:
+            continue
+        category_id = ensure_category(clean_name, "TourAPI 또는 추천 로직에서 자동 등록한 카테고리")
+        link_place_category(place_id, category_id)
+    return place_id
+
+
+def upsert_restaurant_from_place(row: dict[str, Any]) -> int:
+    return execute(
+        """
+        INSERT INTO restaurants (region_id, restaurant_name, food_type, address, price_level)
+        VALUES (%s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+          food_type = VALUES(food_type),
+          address = VALUES(address),
+          price_level = VALUES(price_level)
+        """,
+        (
+            row["region_id"],
+            row["place_name"],
+            row.get("food_type") or "음식점",
+            row.get("address"),
+            "MID",
+        ),
+    )
+
+
+def upsert_accommodation_from_place(row: dict[str, Any]) -> int:
+    return execute(
+        """
+        INSERT INTO accommodations (region_id, accommodation_name, address, price_level, phone)
+        VALUES (%s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
           address = VALUES(address),
-          overview = VALUES(overview),
-          phone = VALUES(phone),
-          latitude = VALUES(latitude),
-          longitude = VALUES(longitude),
-          source_url = VALUES(source_url),
-          external_id = VALUES(external_id)
+          price_level = VALUES(price_level),
+          phone = VALUES(phone)
         """,
         (
             row["region_id"],
             row["place_name"],
             row.get("address"),
-            row.get("overview"),
+            "MID",
             row.get("phone"),
-            row.get("latitude"),
-            row.get("longitude"),
-            row.get("source_url"),
-            row.get("external_id"),
         ),
     )
+
+
+def upsert_tourapi_place(row: dict[str, Any]) -> int:
+    place_id = upsert_place_with_categories(row)
+    content_type_id = str(row.get("content_type_id") or "")
+    try:
+        if content_type_id == "39":
+            upsert_restaurant_from_place(row)
+        elif content_type_id == "32":
+            upsert_accommodation_from_place(row)
+    except Error:
+        pass
+    return place_id
 
 
 def upsert_festival(row: dict[str, Any]) -> None:

@@ -56,6 +56,13 @@ CREATE TABLE places (
   source_url VARCHAR(500) NULL,
   external_id VARCHAR(80) NULL,
   average_rating DECIMAL(3, 2) NOT NULL DEFAULT 0.00,
+  image_url VARCHAR(500) NULL,
+  tags VARCHAR(500) NULL,
+  indoor_outdoor ENUM('실내', '야외', '혼합') NULL,
+  recommended_for VARCHAR(255) NULL,
+  budget_level ENUM('저렴', '보통', '비쌈') NULL,
+  opening_hours VARCHAR(255) NULL,
+  source_api VARCHAR(80) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_places_regions FOREIGN KEY (region_id) REFERENCES regions(region_id),
@@ -189,7 +196,13 @@ INSERT INTO categories (category_name, description) VALUES
 ('축제', '기간성 행사와 지역 축제 중심'),
 ('미식', '음식점, 시장, 카페 중심'),
 ('가족', '가족 단위 방문에 적합'),
-('야간', '야경과 저녁 활동에 적합');
+('야간', '야경과 저녁 활동에 적합'),
+('관광지', 'TourAPI 관광지 타입'),
+('문화시설', '박물관, 전시관, 공연장 등 실내 문화 공간'),
+('카페', '카페와 커피 중심 장소'),
+('실내', '비, 더위, 추위에 대응하기 좋은 실내 장소'),
+('숙박', '호텔, 펜션, 게스트하우스 등 숙박 시설'),
+('여행코스', 'TourAPI 여행코스 타입');
 
 INSERT INTO members (username, password_hash, name, email, preferred_region_id, role) VALUES
 ('demo', '0ead2060b65992dca4769af601a1b3a35ef38cfad2c2c465bb160ea764157c5d', '데모회원', 'demo@example.com', 3, 'USER'),

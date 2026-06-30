@@ -38,6 +38,7 @@ $env:TRAVEL_DB_USER="travel_app"
 $env:TRAVEL_DB_PASSWORD="travel1234"
 $env:TRAVEL_DB_NAME="travel_course_db"
 $env:TRAVEL_DB_AUTH_PLUGIN="mysql_native_password"
+$env:TOUR_API_SERVICE_KEY="data.go.kr에서 받은 국문 관광정보 서비스 디코딩 키"
 ```
 
 6. Streamlit 앱을 실행합니다.
@@ -105,6 +106,70 @@ FLUSH PRIVILEGES;
 | `39` | 음식점 | `restaurants` |
 
 시간이 부족하면 `searchFestival2`, `areaBasedList2`, `detailCommon2` 이 3개만 써도 발표용으로 충분합니다. 더 풍성하게 보이게 하려면 `detailImage2`까지 붙이면 화면 퀄리티가 좋아집니다.
+
+### TourAPI 키 설정
+
+서비스키는 앱 화면에서 직접 입력하지 않습니다. 환경변수나 `.streamlit/secrets.toml`에 아래 이름으로 저장하세요.
+
+```toml
+TOUR_API_SERVICE_KEY = "국문 관광정보 서비스 API 키"
+```
+
+data.go.kr에서 `Encoding` 키와 `Decoding` 키를 모두 제공하는 경우에는 `Decoding` 키 사용을 권장합니다. 앱은 `%2B` 같은 URL 인코딩 흔적이 있는 키를 한 번 풀어서 요청하므로, 기존에 복사한 인코딩 키도 대부분 그대로 사용할 수 있습니다.
+
+현재 연동된 국문 관광정보 서비스 호출:
+
+- `searchFestival2`: 축제 데이터 수집
+- `areaBasedList2`: 지역별 관광지, 문화시설, 음식점, 여행코스 수집
+
+수집된 장소는 기존 `places` 테이블에 저장되고, 유형에 따라 `place_categories`에 `관광지`, `문화시설`, `숙박`, `미식`, `카페`, `자연`, `야간` 같은 카테고리가 연결됩니다. 음식점은 `restaurants`, 숙박은 `accommodations` 테이블에도 함께 저장됩니다.
+
+2026-06-30 전체 수집 실행 결과:
+
+- 장소: 763건
+- 축제: 100건
+- 합계: 863건
+- 대표사진 URL 컬럼 `places.image_url` 추가
+
+## 추가된 맞춤 추천 기능
+
+- `여행지 탐색` 화면에서 여행 스타일, 동행 유형, 예산, 이동수단, 날씨, 여행 시간을 입력해 추천 점수를 계산합니다.
+- 평점, 리뷰 수, 선택한 여행 스타일, 날씨 조건, 찜한 카테고리 성향을 합산해 점수 높은 순서로 보여줍니다.
+- 각 카드에는 추천 점수, 추천 이유, 태그, 상세 정보, 찜하기, 리뷰 작성, 지도 표시가 함께 노출됩니다.
+- `여행 코스 만들기` 화면에는 기존 직접 선택 저장 흐름을 유지하면서, 맞춤 조건 기반 자동 코스 생성 영역을 추가했습니다.
+- `내 활동` 화면에서는 찜한 여행지와 찜 카테고리 성향을 확인할 수 있습니다.
+
+추천 점수 계산 방식:
+
+- 여행 스타일과 장소 카테고리/태그/설명이 맞으면 `+30`
+- 동행 유형과 맞으면 `+15`
+- 비/더움/추움에는 실내 또는 혼합 장소 가중치, 맑음에는 야외 또는 혼합 장소 가중치
+- 예산 컬럼이 있고 선택 예산과 맞으면 `+10`
+- 평점은 최대 `+40`, 리뷰 수는 최대 `+12`
+- 사용자가 많이 찜한 카테고리와 같으면 최대 `+15`
+
+자동 코스 생성 방식:
+
+- 추천 점수가 높은 장소를 먼저 후보로 사용합니다.
+- 반나절, 당일치기, 1박 2일에 따라 시간대 개수를 다르게 구성합니다.
+- 점심/저녁에는 미식 장소, 카페 시간대에는 카페, 야경 시간대에는 야간/전망/해변 키워드 장소를 우선 배치합니다.
+- 장소가 부족하면 남은 추천 후보를 안전하게 채우고, 비어 있으면 안내 메시지만 표시합니다.
+
+## 기존 DB 보강 ALTER TABLE
+
+기존 DB를 삭제하지 않고 추천 기능용 컬럼만 추가하려면 관리자 계정으로 로그인 후 `관리자 SQL` 화면의 `추천용 컬럼 안전 추가` 버튼을 누르거나, HeidiSQL에서 아래 SQL을 실행하세요.
+
+```sql
+ALTER TABLE places ADD COLUMN image_url VARCHAR(500) NULL;
+ALTER TABLE places ADD COLUMN tags VARCHAR(500) NULL;
+ALTER TABLE places ADD COLUMN indoor_outdoor ENUM('실내', '야외', '혼합') NULL;
+ALTER TABLE places ADD COLUMN recommended_for VARCHAR(255) NULL;
+ALTER TABLE places ADD COLUMN budget_level ENUM('저렴', '보통', '비쌈') NULL;
+ALTER TABLE places ADD COLUMN opening_hours VARCHAR(255) NULL;
+ALTER TABLE places ADD COLUMN source_api VARCHAR(80) NULL;
+```
+
+앱은 위 컬럼이 없어도 `NULL` 기본값으로 처리하도록 작성되어 있으므로, ALTER TABLE을 실행하지 않은 상태에서도 기존 검색과 코스 기능이 중단되지 않습니다.
 
 ## 기본 로그인
 
