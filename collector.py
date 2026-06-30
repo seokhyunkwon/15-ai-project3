@@ -1,171 +1,52 @@
 from __future__ import annotations
 
-from datetime import date
+import argparse
 import json
 import os
-from pathlib import Path
+import re
 import tomllib
+from datetime import date, datetime
+from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
 import database as db
 
-
 TOUR_API_BASE_URL = "https://apis.data.go.kr/B551011/KorService2"
-TOUR_API_FESTIVAL_URL = "https://apis.data.go.kr/B551011/KorService2/searchFestival2"
+TOUR_API_AREA_CODE_URL = f"{TOUR_API_BASE_URL}/areaCode2"
 TOUR_API_AREA_BASED_URL = f"{TOUR_API_BASE_URL}/areaBasedList2"
+TOUR_API_FESTIVAL_URL = f"{TOUR_API_BASE_URL}/searchFestival2"
+TOUR_API_DETAIL_COMMON_URL = f"{TOUR_API_BASE_URL}/detailCommon2"
+TOUR_API_DETAIL_INTRO_URL = f"{TOUR_API_BASE_URL}/detailIntro2"
+TOUR_API_DETAIL_INFO_URL = f"{TOUR_API_BASE_URL}/detailInfo2"
 VISITKOREA_FESTIVAL_URL = "https://korean.visitkorea.or.kr/kfes/list/wntyFstvlList.do"
-PHOTO_GALLERY_BASE_URL = "https://apis.data.go.kr/B551011/PhotoGalleryService1"
-DATA_LAB_BASE_URL = "https://apis.data.go.kr/B551011/DataLabService"
-TOUR_API_PROVIDER_BASE_URL = "https://apis.data.go.kr/B551011"
+VISITKOREA_SEARCH_URL = "https://korean.visitkorea.or.kr/search/search_list.do"
 
-
-TOURAPI_REGION_META = {
-    "서울": {"areaCode": "1", "province": "서울특별시", "description": "도심 문화, 궁궐, 쇼핑, 야간 명소가 풍부한 지역"},
-    "부산": {"areaCode": "6", "province": "부산광역시", "description": "바다, 시장, 영화, 야경 코스가 풍부한 지역"},
-    "대구": {"areaCode": "4", "province": "대구광역시", "description": "도심 미식, 근대골목, 산책 코스가 있는 지역"},
-    "인천": {"areaCode": "2", "province": "인천광역시", "description": "섬, 항구, 차이나타운, 공항 접근성이 좋은 지역"},
-    "광주": {"areaCode": "5", "province": "광주광역시", "description": "예술, 역사, 미식 여행에 어울리는 지역"},
-    "대전": {"areaCode": "3", "province": "대전광역시", "description": "과학, 도심 산책, 근교 자연을 함께 볼 수 있는 지역"},
-    "울산": {"areaCode": "7", "province": "울산광역시", "description": "해안, 산업관광, 산악 경관이 함께 있는 지역"},
-    "세종": {"areaCode": "8", "province": "세종특별자치시", "description": "도심 공원과 행정도시 기반의 산책 코스가 있는 지역"},
-    "경기": {"areaCode": "31", "province": "경기도", "description": "수도권 근교 여행지와 가족형 관광지가 많은 지역"},
-    "강원": {"areaCode": "32", "province": "강원특별자치도", "description": "산, 바다, 호수, 계절 여행지가 풍부한 지역"},
-    "충북": {"areaCode": "33", "province": "충청북도", "description": "호수, 산림, 내륙 휴양 코스가 좋은 지역"},
-    "충남": {"areaCode": "34", "province": "충청남도", "description": "서해안, 온천, 역사 도시가 있는 지역"},
-    "경북": {"areaCode": "35", "province": "경상북도", "description": "역사 유산과 전통 문화 여행지가 풍부한 지역"},
-    "경남": {"areaCode": "36", "province": "경상남도", "description": "남해안, 섬, 역사 도시를 함께 볼 수 있는 지역"},
-    "전북": {"areaCode": "37", "province": "전북특별자치도", "description": "한옥, 미식, 산악 경관이 어울리는 지역"},
-    "전남": {"areaCode": "38", "province": "전라남도", "description": "섬, 남도 미식, 해안 관광지가 풍부한 지역"},
-    "제주": {"areaCode": "39", "province": "제주특별자치도", "description": "자연 경관과 드라이브 코스가 풍부한 지역"},
-    "경주": {"areaCode": "35", "sigunguCode": "2", "province": "경상북도", "description": "신라 역사 유적과 야간 산책 코스가 강한 지역"},
-    "강릉": {"areaCode": "32", "sigunguCode": "1", "province": "강원특별자치도", "description": "바다, 커피거리, 자연 휴식 코스가 좋은 지역"},
+CONTENT_TYPES = {
+    "places": "12",          # 관광지
+    "festivals": "15",      # 축제/행사
+    "accommodations": "32", # 숙소
+    "restaurants": "39",    # 음식점
 }
 
-REGION_NAME_TO_ID = {
-    "서울": 1,
-    "부산": 2,
-    "경주": 3,
-    "제주": 4,
-    "강릉": 5,
-    "대구": 6,
-    "인천": 7,
-    "광주": 8,
-    "대전": 9,
-    "울산": 10,
-    "세종": 11,
-    "경기": 12,
-    "강원": 13,
-    "충북": 14,
-    "충남": 15,
-    "전북": 16,
-    "전남": 17,
-    "경북": 18,
-    "경남": 19,
-}
-TOURAPI_REGION_CODES = {REGION_NAME_TO_ID[name]: {key: value for key, value in meta.items() if key in {"areaCode", "sigunguCode"}} for name, meta in TOURAPI_REGION_META.items()}
-
-TOURAPI_CONTENT_TYPES = {
-    "관광지": "12",
-    "문화시설": "14",
-    "여행코스": "25",
-    "숙박": "32",
-    "음식점": "39",
+CONTENT_TYPE_NAMES = {
+    "12": "관광지",
+    "14": "문화시설",
+    "15": "축제",
+    "25": "여행코스",
+    "28": "레포츠",
+    "32": "숙박",
+    "38": "쇼핑",
+    "39": "음식점",
 }
 
-CONTENT_TYPE_CATEGORY_NAMES = {
-    "12": ["관광지"],
-    "14": ["문화시설", "실내"],
-    "25": ["여행코스"],
-    "32": ["숙박", "실내"],
-    "39": ["미식"],
-}
+IMAGE_ROOT = Path(os.getenv("TRAVEL_IMAGE_ROOT", "static/images"))
 
-FULL_COLLECTION_CONTENT_TYPES = ["12", "14", "25", "32", "39"]
-
-INDOOR_HINTS = ("박물관", "전시", "미술관", "기념관", "센터", "몰", "시장", "식당", "카페", "문화", "실내")
-OUTDOOR_HINTS = ("해수욕장", "해변", "공원", "숲", "산", "봉", "길", "전망대", "광장", "섬", "폭포", "호수", "야외")
-CAFE_HINTS = ("카페", "커피", "로스터", "디저트")
-
-APPROVED_API_SERVICES = {
-    "KOR": {
-        "name": "한국관광공사_국문 관광정보 서비스_GW",
-        "data_go_kr_id": "15101578",
-        "storage": "places, festivals, restaurants, accommodations, place_categories",
-    },
-    "PHOTOG": {
-        "name": "한국관광공사_관광사진 정보_GW",
-        "data_go_kr_id": "15101914",
-        "storage": "tour_photos",
-        "endpoints": [
-            f"{PHOTO_GALLERY_BASE_URL}/gallerySearchList1",
-            f"{PHOTO_GALLERY_BASE_URL}/galleryList1",
-        ],
-    },
-    "DATALAB": {
-        "name": "한국관광공사_빅데이터_지역별 방문자수_GW",
-        "data_go_kr_id": "15101972",
-        "storage": "region_visitor_stats",
-        "endpoints": [
-            f"{DATA_LAB_BASE_URL}/metcoRegnVisitrDDList",
-            f"{DATA_LAB_BASE_URL}/locgoRegnVisitrDDList",
-            f"{DATA_LAB_BASE_URL}/metcoRegnVisitrMMList",
-        ],
-    },
-    "TATSCNCTR": {
-        "name": "한국관광공사_관광지 집중률 방문자 추이 예측 정보",
-        "data_go_kr_id": "15128555",
-        "storage": "attraction_concentration",
-        "endpoints": [
-            f"{TOUR_API_PROVIDER_BASE_URL}/TatsCnctrService1/tatsCnctrList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/TatsCnctrService/tatsCnctrList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/TatsCnctrService1/getTatsCnctrList",
-        ],
-    },
-    "TARRLTE": {
-        "name": "한국관광공사_관광지별 연관 관광지 정보",
-        "data_go_kr_id": "15128560",
-        "storage": "related_attractions",
-        "endpoints": [
-            f"{TOUR_API_PROVIDER_BASE_URL}/TarRlteService1/tarRlteList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/TatsRlteService1/tatsRlteList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/TarRlteService1/getTarRlteList",
-        ],
-    },
-    "LOCGOHUB": {
-        "name": "한국관광공사_기초지자체 중심 관광지 정보",
-        "data_go_kr_id": "15128559",
-        "storage": "center_attractions",
-        "endpoints": [
-            f"{TOUR_API_PROVIDER_BASE_URL}/LocgoHubService1/locgoHubList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/LocgoHubService/locgoHubList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/LocgoHubService1/getLocgoHubList",
-        ],
-    },
-    "DMANDDVRST": {
-        "name": "한국관광공사_지역별 관광 다양성",
-        "data_go_kr_id": "15151365",
-        "storage": "regional_demand_metrics",
-        "endpoints": [
-            f"{TOUR_API_PROVIDER_BASE_URL}/DemandDvrstService1/demandDvrstList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/DmandDvrstService1/dmandDvrstList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/DemandDvrstService1/getDemandDvrstList",
-        ],
-    },
-    "DMANDRESR": {
-        "name": "한국관광공사_지역별 관광 자원 수요",
-        "data_go_kr_id": "15152138",
-        "storage": "regional_demand_metrics",
-        "endpoints": [
-            f"{TOUR_API_PROVIDER_BASE_URL}/DemandResrService1/demandResrList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/DmandResrService1/dmandResrList",
-            f"{TOUR_API_PROVIDER_BASE_URL}/DemandResrService1/getDemandResrList",
-        ],
-    },
-}
+_SAFE_NAME_RE = re.compile(r"[^0-9A-Za-z가-힣_.-]+")
+_COLUMNS_CACHE: dict[str, set[str]] = {}
 
 
 def _safe_text(value: Any) -> str | None:
@@ -177,175 +58,12 @@ def _safe_text(value: Any) -> str | None:
 
 def _date_from_yyyymmdd(value: Any) -> str | None:
     text = _safe_text(value)
-    if not text or len(text) != 8:
+    if not text or len(text) != 8 or not text.isdigit():
         return None
     return f"{text[:4]}-{text[4:6]}-{text[6:]}"
 
 
-def configured_tourapi_key() -> str | None:
-    for name in ("TOUR_API_SERVICE_KEY", "TOURAPI_SERVICE_KEY", "DATA_GO_KR_SERVICE_KEY"):
-        value = _safe_text(os.getenv(name))
-        if value:
-            return value
-    secrets_path = Path(".streamlit") / "secrets.toml"
-    if secrets_path.exists():
-        try:
-            values = tomllib.loads(secrets_path.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError):
-            values = {}
-        for name in (
-            "TOUR_API_SERVICE_KEY",
-            "TOURAPI_SERVICE_KEY",
-            "DATA_GO_KR_SERVICE_KEY",
-            "VISITKOREA_PHOTO_SERVICE_KEY",
-            "VISITKOREA_BIGDATA_SERVICE_KEY",
-        ):
-            value = _safe_text(values.get(name))
-            if value:
-                return value
-    return None
-
-
-def _normalize_service_key(service_key: str) -> str:
-    key = service_key.strip()
-    return unquote(key) if "%" in key else key
-
-
-def _tourapi_items(endpoint_url: str, service_key: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-    request_params = {
-        "serviceKey": _normalize_service_key(service_key),
-        "MobileOS": "ETC",
-        "MobileApp": "TravelCourseStreamlit",
-        "_type": "json",
-    }
-    request_params.update(params)
-    response = requests.get(endpoint_url, params=request_params, timeout=10)
-    response.raise_for_status()
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise ValueError(f"TourAPI JSON 응답을 읽지 못했습니다: {response.text[:160]}") from exc
-
-    header = payload.get("response", {}).get("header", {})
-    result_code = str(header.get("resultCode", "0000"))
-    if result_code not in {"0000", "0"}:
-        result_message = header.get("resultMsg") or "TourAPI 요청 실패"
-        raise ValueError(f"TourAPI 오류 {result_code}: {result_message}")
-
-    items = payload.get("response", {}).get("body", {}).get("items", {}).get("item", [])
-    if isinstance(items, dict):
-        return [items]
-    return items or []
-
-
-def _extract_items(payload: Any) -> list[dict[str, Any]]:
-    if not isinstance(payload, dict):
-        return []
-    candidates = [
-        payload.get("response", {}).get("body", {}).get("items", {}).get("item"),
-        payload.get("response", {}).get("body", {}).get("items"),
-        payload.get("body", {}).get("items", {}).get("item"),
-        payload.get("body", {}).get("items"),
-        payload.get("items", {}).get("item") if isinstance(payload.get("items"), dict) else payload.get("items"),
-        payload.get("data"),
-        payload.get("result"),
-    ]
-    for candidate in candidates:
-        if isinstance(candidate, dict):
-            return [candidate]
-        if isinstance(candidate, list):
-            return [item for item in candidate if isinstance(item, dict)]
-    return []
-
-
-def _tourapi_items_any(endpoint_url: str, service_key: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-    request_params = {
-        "serviceKey": _normalize_service_key(service_key),
-        "MobileOS": "ETC",
-        "MobileApp": "TravelCourseStreamlit",
-        "_type": "json",
-    }
-    request_params.update({key: value for key, value in params.items() if value is not None})
-    response = requests.get(endpoint_url, params=request_params, timeout=10)
-    response.raise_for_status()
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise ValueError(f"TourAPI JSON 응답을 읽지 못했습니다: {response.text[:160]}") from exc
-
-    header = payload.get("response", {}).get("header", {}) if isinstance(payload, dict) else {}
-    result_code = str(header.get("resultCode", "0000"))
-    if result_code not in {"0000", "0"}:
-        result_message = header.get("resultMsg") or "TourAPI 요청 실패"
-        raise ValueError(f"TourAPI 오류 {result_code}: {result_message}")
-    return _extract_items(payload)
-
-
-def _try_api_candidates(
-    service_key: str,
-    endpoint_urls: list[str],
-    params: dict[str, Any],
-) -> tuple[list[dict[str, Any]], str | None, str, str]:
-    errors: list[str] = []
-    for endpoint_url in endpoint_urls:
-        try:
-            items = _tourapi_items_any(endpoint_url, service_key, params)
-        except Exception as exc:
-            errors.append(f"{endpoint_url.rsplit('/', 1)[-1]}: {exc}")
-            continue
-        if items:
-            return items, endpoint_url, "SUCCESS", f"{len(items)}건 수신"
-        errors.append(f"{endpoint_url.rsplit('/', 1)[-1]}: empty")
-    message = " / ".join(errors[:4]) if errors else "응답이 비어 있습니다."
-    return [], endpoint_urls[0] if endpoint_urls else None, "FAILED", message
-
-
-def _coalesce(item: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        value = item.get(key)
-        if _safe_text(value):
-            return value
-    return None
-
-
-def _numeric_value(item: dict[str, Any], *keys: str) -> float | None:
-    for key in keys:
-        value = item.get(key)
-        if value is None or value == "":
-            continue
-        try:
-            return float(str(value).replace(",", ""))
-        except ValueError:
-            continue
-    return None
-
-
-def _first_numeric_field(item: dict[str, Any], excluded: set[str] | None = None) -> tuple[str | None, float | None]:
-    excluded = excluded or set()
-    for key, value in item.items():
-        if key in excluded or value in (None, ""):
-            continue
-        try:
-            return key, float(str(value).replace(",", ""))
-        except ValueError:
-            continue
-    return None, None
-
-
-def _region_name_from_item(item: dict[str, Any]) -> str:
-    parts = [
-        _safe_text(_coalesce(item, "areaNm", "areaName", "sidoNm", "ctprvnNm", "signguNm", "sigunguNm", "regionName")),
-        _safe_text(_coalesce(item, "signguNm", "sigunguName", "sggNm")),
-    ]
-    clean_parts = [part for part in parts if part]
-    return " ".join(dict.fromkeys(clean_parts)) or "지역 미상"
-
-
-def _raw_json(item: dict[str, Any]) -> str:
-    return json.dumps(item, ensure_ascii=False, default=str)
-
-
-def _to_float(value: Any) -> float | None:
+def _float_or_none(value: Any) -> float | None:
     text = _safe_text(value)
     if not text:
         return None
@@ -355,550 +73,864 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
-def _infer_indoor_outdoor(text: str, content_type_id: str) -> str:
-    if content_type_id in {"14", "32", "39"}:
-        return "실내"
-    if any(hint in text for hint in INDOOR_HINTS):
-        return "실내"
-    if any(hint in text for hint in OUTDOOR_HINTS):
-        return "야외"
-    return "혼합"
+def _clean_service_key(service_key: str) -> str:
+    # 공공데이터포털에서 받은 Encoding Key를 넣어도 동작하도록 한 번 디코딩한다.
+    return unquote(service_key.strip())
 
 
-def _infer_recommended_for(text: str, content_type_id: str) -> str:
-    targets = ["친구"]
-    if content_type_id in {"12", "14"} or any(hint in text for hint in ("박물관", "공원", "체험", "역사")):
-        targets.append("가족")
-    if any(hint in text for hint in ("야경", "전망", "해변", "카페", "거리", "마을")):
-        targets.append("연인")
-    if any(hint in text for hint in ("산책", "미술관", "박물관", "카페", "숲")):
-        targets.append("혼자")
-    return ", ".join(dict.fromkeys(targets))
+def visitkorea_search_url(keyword: str | None) -> str:
+    text = _safe_text(keyword) or "축제"
+    return f"{VISITKOREA_SEARCH_URL}?keyword={quote(text)}"
 
 
-def _category_names_for_item(item: dict[str, Any], content_type_id: str) -> list[str]:
-    title = _safe_text(item.get("title")) or ""
-    names = list(CONTENT_TYPE_CATEGORY_NAMES.get(content_type_id, ["관광지"]))
-    if any(hint in title for hint in CAFE_HINTS):
-        names.append("카페")
-    if any(hint in title for hint in ("해변", "해수욕장", "공원", "숲", "산", "폭포", "호수")):
-        names.append("자연")
-    if any(hint in title for hint in ("야경", "전망", "타워", "대교")):
-        names.append("야간")
-    if any(hint in title for hint in ("궁", "사", "릉", "유적", "박물관", "문화")):
-        names.append("역사")
-    return list(dict.fromkeys(names))
+def configured_service_key() -> str | None:
+    key_names = (
+        "TOUR_API_SERVICE_KEY",
+        "TOURAPI_SERVICE_KEY",
+        "TOUR_API_KEY",
+        "DATA_GO_KR_SERVICE_KEY",
+        "VISITKOREA_PHOTO_SERVICE_KEY",
+        "VISITKOREA_BIGDATA_SERVICE_KEY",
+    )
+    for name in key_names:
+        value = os.getenv(name)
+        if value:
+            return str(value).strip()
 
-
-def _first_image(item: dict[str, Any]) -> str | None:
-    return _safe_text(item.get("firstimage")) or _safe_text(item.get("firstimage2"))
-
-
-def ensure_known_regions(region_names: list[str] | None = None) -> dict[str, int]:
-    target_names = region_names or list(TOURAPI_REGION_META.keys())
-    region_ids: dict[str, int] = {}
-    for region_name in target_names:
-        meta = TOURAPI_REGION_META.get(region_name)
-        if not meta:
-            continue
+    secrets_path = Path(".streamlit/secrets.toml")
+    if secrets_path.exists():
         try:
-            region_ids[region_name] = db.ensure_region(region_name, meta.get("province"), meta.get("description"))
+            data = tomllib.loads(secrets_path.read_text(encoding="utf-8"))
+            for name in key_names:
+                value = data.get(name)
+                if value:
+                    return str(value).strip()
         except Exception:
-            fallback_id = REGION_NAME_TO_ID.get(region_name)
-            if fallback_id:
-                region_ids[region_name] = fallback_id
-    return region_ids
+            pass
+    return None
 
 
-def _region_codes_for_name(region_name: str) -> dict[str, str] | None:
-    meta = TOURAPI_REGION_META.get(region_name)
-    if not meta:
-        return None
-    return {key: str(value) for key, value in meta.items() if key in {"areaCode", "sigunguCode"}}
+def _table_columns(table_name: str) -> set[str]:
+    if table_name not in _COLUMNS_CACHE:
+        rows = db.fetch_all(f"SHOW COLUMNS FROM `{table_name}`")
+        _COLUMNS_CACHE[table_name] = {row["Field"] for row in rows}
+    return _COLUMNS_CACHE[table_name]
 
 
-def _region_specs(region_names: list[str] | None = None, region_ids: list[int] | None = None) -> list[tuple[str, int, dict[str, str]]]:
-    if region_names:
-        target_names = [name for name in region_names if name in TOURAPI_REGION_META]
-    elif region_ids:
-        id_to_name = {region_id: region_name for region_name, region_id in REGION_NAME_TO_ID.items()}
-        target_names = [id_to_name[region_id] for region_id in region_ids if region_id in id_to_name]
+def _filter_existing_columns(table_name: str, data: dict[str, Any]) -> dict[str, Any]:
+    columns = _table_columns(table_name)
+    return {key: value for key, value in data.items() if key in columns}
+
+
+def _upsert_row(table_name: str, data: dict[str, Any], skip_update: set[str] | None = None) -> None:
+    """테이블에 존재하는 컬럼만 골라서 INSERT ... ON DUPLICATE KEY UPDATE 실행."""
+    data = _filter_existing_columns(table_name, data)
+    if not data:
+        return
+
+    skip_update = skip_update or set()
+    columns = list(data.keys())
+    placeholders = ", ".join(["%s"] * len(columns))
+    column_sql = ", ".join(f"`{col}`" for col in columns)
+    update_cols = [col for col in columns if col not in skip_update]
+
+    if update_cols:
+        update_sql = ", ".join(f"`{col}` = VALUES(`{col}`)" for col in update_cols)
     else:
-        target_names = list(TOURAPI_REGION_META.keys())
+        update_sql = f"`{columns[0]}` = `{columns[0]}`"
 
-    ensured_ids = ensure_known_regions(target_names)
-    specs: list[tuple[str, int, dict[str, str]]] = []
-    for region_name in target_names:
-        region_id = ensured_ids.get(region_name)
-        codes = _region_codes_for_name(region_name)
-        if region_id and codes:
-            specs.append((region_name, region_id, codes))
-    return specs
+    sql = f"""
+        INSERT INTO `{table_name}` ({column_sql})
+        VALUES ({placeholders})
+        ON DUPLICATE KEY UPDATE {update_sql}
+    """
+    db.execute(sql, tuple(data[col] for col in columns))
 
 
-def _region_id_from_address(address: str) -> int:
-    for region_name in TOURAPI_REGION_META:
-        if region_name in address:
-            ids = ensure_known_regions([region_name])
-            return ids.get(region_name, REGION_NAME_TO_ID.get(region_name, 1))
-    return REGION_NAME_TO_ID.get("서울", 1)
+def _ensure_column(table_name: str, column_name: str, ddl: str) -> None:
+    """컬럼이 없으면 추가한다. 이미 있거나 권한 문제 등이 있으면 수집은 계속 진행한다."""
+    try:
+        columns = _table_columns(table_name)
+    except Exception:
+        return
+    if column_name in columns:
+        return
+    try:
+        db.execute(f"ALTER TABLE `{table_name}` ADD COLUMN {ddl}")
+        _COLUMNS_CACHE.pop(table_name, None)
+    except Exception:
+        _COLUMNS_CACHE.pop(table_name, None)
 
 
-def fetch_tourapi_festivals(service_key: str, limit: int = 20) -> list[dict[str, Any]]:
-    params = {
-        "eventStartDate": date.today().strftime("%Y%m%d"),
-        "numOfRows": limit,
-        "pageNo": 1,
-        "arrange": "A",
+def _ensure_table(sql: str) -> None:
+    try:
+        db.execute(sql)
+    except Exception:
+        pass
+
+
+def ensure_collection_schema() -> None:
+    """TourAPI 재수집에 필요한 확장 컬럼/매핑 테이블을 보장한다."""
+    _ensure_column("regions", "tour_area_code", "tour_area_code VARCHAR(10) NULL COMMENT 'TourAPI 지역 코드'")
+    _ensure_column("regions", "tour_sigungu_code", "tour_sigungu_code VARCHAR(10) NULL COMMENT 'TourAPI 시군구 코드'")
+    _ensure_column("regions", "kakao_keyword", "kakao_keyword VARCHAR(100) NULL COMMENT '지도 API 검색용 키워드'")
+    try:
+        db.execute("ALTER TABLE regions ADD INDEX idx_regions_tour_code (tour_area_code, tour_sigungu_code)")
+    except Exception:
+        pass
+
+    for table_name in ("places", "festivals", "restaurants", "accommodations"):
+        _ensure_column(table_name, "image_path", "image_path VARCHAR(500) NULL COMMENT 'HDD/프로젝트 내부 저장 이미지 경로'")
+        _ensure_column(table_name, "image_original_url", "image_original_url VARCHAR(1000) NULL COMMENT 'API 원본 이미지 URL'")
+        _ensure_column(table_name, "image_saved_at", "image_saved_at DATETIME NULL COMMENT '이미지 저장 시각'")
+
+    # 공식 API에서 직접 제공되거나 상세조회로 확인 가능한 필드만 추가한다.
+    for table_name in ("places", "festivals", "restaurants", "accommodations"):
+        _ensure_column(table_name, "content_type_id", "content_type_id VARCHAR(20) NULL COMMENT 'TourAPI contenttypeid'")
+        _ensure_column(table_name, "content_type_name", "content_type_name VARCHAR(80) NULL COMMENT 'TourAPI 콘텐츠 타입명'")
+        _ensure_column(table_name, "cat1", "cat1 VARCHAR(80) NULL COMMENT 'TourAPI 대분류'")
+        _ensure_column(table_name, "cat2", "cat2 VARCHAR(80) NULL COMMENT 'TourAPI 중분류'")
+        _ensure_column(table_name, "cat3", "cat3 VARCHAR(80) NULL COMMENT 'TourAPI 소분류'")
+        _ensure_column(table_name, "detail_intro_json", "detail_intro_json LONGTEXT NULL COMMENT 'TourAPI detailIntro 원본 JSON'")
+        _ensure_column(table_name, "source_url", "source_url VARCHAR(500) NULL COMMENT '공식/검색 정보 URL'")
+        _ensure_column(table_name, "external_id", "external_id VARCHAR(80) NULL COMMENT 'TourAPI contentid'")
+
+    _ensure_column("places", "lcls_systm1", "lcls_systm1 VARCHAR(100) NULL COMMENT 'TourAPI 분류체계1'")
+    _ensure_column("places", "lcls_systm2", "lcls_systm2 VARCHAR(100) NULL COMMENT 'TourAPI 분류체계2'")
+    _ensure_column("places", "lcls_systm3", "lcls_systm3 VARCHAR(100) NULL COMMENT 'TourAPI 분류체계3'")
+    _ensure_column("places", "use_fee", "use_fee VARCHAR(500) NULL COMMENT 'TourAPI 상세정보 이용요금'")
+    _ensure_column("places", "parking_fee", "parking_fee VARCHAR(255) NULL COMMENT 'TourAPI 상세정보 주차요금'")
+    _ensure_column("places", "opening_hours", "opening_hours VARCHAR(255) NULL COMMENT 'TourAPI 이용시간'")
+    _ensure_column("places", "has_tour_image", "has_tour_image BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'TourAPI 대표이미지 보유 여부'")
+    _ensure_column("places", "photo_priority_score", "photo_priority_score DECIMAL(8,2) NOT NULL DEFAULT 0 COMMENT '사진 우선 노출 점수'")
+    _ensure_column("places", "detail_common_json", "detail_common_json LONGTEXT NULL COMMENT 'TourAPI detailCommon 원본 JSON'")
+    _ensure_column("places", "detail_info_json", "detail_info_json LONGTEXT NULL COMMENT 'TourAPI detailInfo 원본 JSON'")
+    _ensure_column("places", "tour_api_updated_at", "tour_api_updated_at DATETIME NULL COMMENT 'TourAPI 상세정보 갱신 시각'")
+
+    _ensure_column("festivals", "event_place", "event_place VARCHAR(255) NULL COMMENT 'TourAPI 행사 장소'")
+    _ensure_column("festivals", "playtime", "playtime VARCHAR(255) NULL COMMENT 'TourAPI 공연/행사 시간'")
+    _ensure_column("festivals", "sponsor", "sponsor VARCHAR(255) NULL COMMENT 'TourAPI 주최/주관'")
+    _ensure_column("restaurants", "phone", "phone VARCHAR(80) NULL COMMENT 'TourAPI 전화번호'")
+    _ensure_column("restaurants", "first_menu", "first_menu VARCHAR(255) NULL COMMENT 'TourAPI 대표 메뉴'")
+    _ensure_column("restaurants", "treat_menu", "treat_menu VARCHAR(500) NULL COMMENT 'TourAPI 취급 메뉴'")
+    _ensure_column("restaurants", "open_time", "open_time VARCHAR(255) NULL COMMENT 'TourAPI 영업 시간'")
+    _ensure_column("restaurants", "rest_date", "rest_date VARCHAR(255) NULL COMMENT 'TourAPI 쉬는 날'")
+    _ensure_column("restaurants", "parking_info", "parking_info VARCHAR(255) NULL COMMENT 'TourAPI 주차 정보'")
+    _ensure_column("accommodations", "source_url", "source_url VARCHAR(500) NULL COMMENT '공식/검색 정보 URL'")
+    _ensure_column("accommodations", "external_id", "external_id VARCHAR(80) NULL COMMENT 'TourAPI contentid'")
+    _ensure_column("accommodations", "content_type_id", "content_type_id VARCHAR(20) NULL COMMENT 'TourAPI contenttypeid'")
+    _ensure_column("accommodations", "content_type_name", "content_type_name VARCHAR(80) NULL COMMENT 'TourAPI 콘텐츠 타입명'")
+    _ensure_column("accommodations", "cat1", "cat1 VARCHAR(80) NULL COMMENT 'TourAPI 대분류'")
+    _ensure_column("accommodations", "cat2", "cat2 VARCHAR(80) NULL COMMENT 'TourAPI 중분류'")
+    _ensure_column("accommodations", "cat3", "cat3 VARCHAR(80) NULL COMMENT 'TourAPI 소분류'")
+    _ensure_column("accommodations", "checkin_time", "checkin_time VARCHAR(120) NULL COMMENT 'TourAPI 체크인'")
+    _ensure_column("accommodations", "checkout_time", "checkout_time VARCHAR(120) NULL COMMENT 'TourAPI 체크아웃'")
+    _ensure_column("accommodations", "room_count", "room_count VARCHAR(120) NULL COMMENT 'TourAPI 객실 수'")
+    _ensure_column("accommodations", "reservation_url", "reservation_url VARCHAR(500) NULL COMMENT 'TourAPI 예약 URL'")
+    _ensure_column("accommodations", "parking_info", "parking_info VARCHAR(255) NULL COMMENT 'TourAPI 주차 정보'")
+
+
+def _tourapi_get(service_key: str, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
+    merged = {
+        "serviceKey": _clean_service_key(service_key),
+        "MobileOS": "ETC",
+        "MobileApp": "TravelCourseStreamlit",
+        "_type": "json",
+        **params,
     }
-    items = _tourapi_items(TOUR_API_FESTIVAL_URL, service_key, params)
+    response = requests.get(endpoint, params=merged, timeout=15)
+    response.raise_for_status()
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        preview = response.text[:300].replace("\n", " ")
+        raise RuntimeError(f"TourAPI JSON 파싱 실패: {preview}") from exc
+
+    header = payload.get("response", {}).get("header", {})
+    result_code = str(header.get("resultCode", "")).strip()
+    result_msg = str(header.get("resultMsg", "")).strip()
+    if result_code and result_code not in {"0000", "0"}:
+        raise RuntimeError(f"TourAPI 오류 resultCode={result_code}, resultMsg={result_msg}")
+    return payload
+
+
+def _items_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    TourAPI 응답에서 item 목록만 안전하게 꺼낸다.
+
+    주의: 데이터가 없는 지역/조건에서는 TourAPI가
+    items를 {"item": [...]} 형태가 아니라 빈 문자열("")로 주는 경우가 있다.
+    그 상태에서 .get("item")을 호출하면
+    'str' object has no attribute 'get' 오류가 나므로 타입을 먼저 검사한다.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    response = payload.get("response")
+    if not isinstance(response, dict):
+        return []
+
+    body = response.get("body")
+    if not isinstance(body, dict):
+        return []
+
+    items_container = body.get("items")
+    if not items_container:
+        return []
+
+    # 정상적인 TourAPI 형태: {"items": {"item": [...]}}
+    if isinstance(items_container, dict):
+        items = items_container.get("item", [])
+    # 일부 API/응답 형태: {"items": [...]}
+    elif isinstance(items_container, list):
+        items = items_container
+    # 데이터 없음: {"items": ""} 같은 형태
+    else:
+        return []
+
+    if not items:
+        return []
+    if isinstance(items, dict):
+        return [items]
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _api_items(service_key: str, endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    payload = _tourapi_get(service_key, endpoint, params)
+    return _items_from_payload(payload)
+
+
+def _slug(text: str, default: str = "image") -> str:
+    text = _SAFE_NAME_RE.sub("_", text.strip())
+    text = text.strip("._-")
+    return text[:80] or default
+
+
+def save_image_from_url(image_url: str | None, folder: str, file_stem: str) -> tuple[str | None, str | None, str | None]:
+    """API 이미지 URL을 HDD에 저장하고 DB에 넣을 상대 경로를 반환한다."""
+    image_url = _safe_text(image_url)
+    if not image_url:
+        return None, None, None
+
+    try:
+        response = requests.get(image_url, timeout=15)
+        response.raise_for_status()
+    except Exception:
+        # 다운로드 실패 시 원본 URL만 남긴다.
+        return None, image_url, None
+
+    content_type = response.headers.get("Content-Type", "").lower()
+    ext = ".jpg"
+    if "png" in content_type:
+        ext = ".png"
+    elif "webp" in content_type:
+        ext = ".webp"
+    else:
+        parsed_ext = Path(urlparse(image_url).path).suffix.lower()
+        if parsed_ext in {".jpg", ".jpeg", ".png", ".webp"}:
+            ext = parsed_ext
+
+    target_dir = IMAGE_ROOT / folder
+    target_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{_slug(file_stem)}{ext}"
+    target_path = target_dir / filename
+    target_path.write_bytes(response.content)
+
+    # Streamlit 실행 위치 기준으로 쓰기 편하게 상대 경로 저장
+    saved_path = str(target_path).replace("\\", "/")
+    return saved_path, image_url, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+
+def _normalize_tour_code(value: Any) -> str | None:
+    text = _safe_text(value)
+    if text in {None, "", "0", "00"}:
+        return None
+    return text
+
+def upsert_region(region_name: str, province: str, area_code: str | None, sigungu_code: str | None = None) -> int:
+    ensure_collection_schema()
+    area_code = _normalize_tour_code(area_code)
+    sigungu_code = _normalize_tour_code(sigungu_code)
+    data = {
+        "region_name": region_name,
+        "province": province,
+        "description": f"TourAPI 지역 코드 기반으로 동기화된 지역입니다. area={area_code}, sigungu={sigungu_code or '-'}",
+        "tour_area_code": area_code,
+        "tour_sigungu_code": sigungu_code,
+        "kakao_keyword": region_name,
+    }
+    _upsert_row("regions", data, skip_update={"region_name"})
+
+    if "tour_area_code" in _table_columns("regions"):
+        row = db.fetch_one(
+            """
+            SELECT region_id
+            FROM regions
+            WHERE tour_area_code = %s
+              AND (
+                tour_sigungu_code = %s
+                OR ((tour_sigungu_code IS NULL OR tour_sigungu_code = '') AND %s IS NULL)
+              )
+            LIMIT 1
+            """,
+            (area_code, sigungu_code, sigungu_code),
+        )
+        if row:
+            return int(row["region_id"])
+
+    row = db.fetch_one("SELECT region_id FROM regions WHERE region_name = %s", (region_name,))
+    if not row:
+        raise RuntimeError(f"지역 저장 실패: {region_name}")
+    return int(row["region_id"])
+
+
+def sync_regions_from_tourapi(service_key: str, include_sigungu: bool = True) -> int:
+    """TourAPI 지역코드/시군구코드를 regions 테이블에 동기화한다."""
+    ensure_collection_schema()
+    inserted_or_updated = 0
+    areas = _api_items(
+        service_key,
+        TOUR_API_AREA_CODE_URL,
+        {"numOfRows": 100, "pageNo": 1},
+    )
+
+    for area in areas:
+        area_code = _safe_text(area.get("code"))
+        area_name = _safe_text(area.get("name"))
+        if not area_code or not area_name:
+            continue
+
+        # 광역 지역: 서울, 부산, 제주 등 기존 5개와 이름이 같으면 UPDATE됨
+        upsert_region(area_name, area_name, area_code, None)
+        inserted_or_updated += 1
+
+        if not include_sigungu:
+            continue
+
+        try:
+            sigungus = _api_items(
+                service_key,
+                TOUR_API_AREA_CODE_URL,
+                {"areaCode": area_code, "numOfRows": 300, "pageNo": 1},
+            )
+        except Exception:
+            sigungus = []
+
+        for sigungu in sigungus:
+            sigungu_code = _safe_text(sigungu.get("code"))
+            sigungu_name = _safe_text(sigungu.get("name"))
+            if not sigungu_code or not sigungu_name:
+                continue
+
+            # 중구/남구처럼 여러 지역에 중복되는 이름이 많으므로 광역명을 붙여 유니크하게 만든다.
+            region_name = f"{area_name} {sigungu_name}"
+            upsert_region(region_name, area_name, area_code, sigungu_code)
+            inserted_or_updated += 1
+
+    return inserted_or_updated
+
+
+def resolve_region_id(area_code: Any, sigungu_code: Any = None) -> int | None:
+    """TourAPI areaCode/sigunguCode로 DB에 실제 저장된 region_id를 찾는다.
+
+    고정값(예: 대구=6)을 쓰지 않고 regions 테이블의 tour_area_code,
+    tour_sigungu_code를 기준으로 조회한다.
+    """
+    ensure_collection_schema()
+    area_code = _normalize_tour_code(area_code)
+    sigungu_code = _normalize_tour_code(sigungu_code)
+    if not area_code:
+        return None
+
+    if sigungu_code and "tour_area_code" in _table_columns("regions"):
+        row = db.fetch_one(
+            """
+            SELECT region_id
+            FROM regions
+            WHERE tour_area_code = %s AND tour_sigungu_code = %s
+            ORDER BY region_id
+            LIMIT 1
+            """,
+            (area_code, sigungu_code),
+        )
+        if row:
+            return int(row["region_id"])
+
+    if "tour_area_code" in _table_columns("regions"):
+        row = db.fetch_one(
+            """
+            SELECT region_id
+            FROM regions
+            WHERE tour_area_code = %s
+              AND (tour_sigungu_code IS NULL OR tour_sigungu_code = '')
+            ORDER BY region_id
+            LIMIT 1
+            """,
+            (area_code,),
+        )
+        if row:
+            return int(row["region_id"])
+
+    return None
+
+
+def ensure_category(category_name: str, description: str | None = None) -> int:
+    _upsert_row(
+        "categories",
+        {
+            "category_name": category_name,
+            "description": description or f"{category_name} 관련 항목",
+        },
+        skip_update={"category_name"},
+    )
+    row = db.fetch_one("SELECT category_id FROM categories WHERE category_name = %s", (category_name,))
+    if not row:
+        raise RuntimeError(f"카테고리 저장 실패: {category_name}")
+    return int(row["category_id"])
+
+
+def attach_category(entity_type: str, entity_id: int, category_name: str) -> None:
+    mapping = {
+        "places": ("place_categories", "place_id"),
+    }
+    if entity_type not in mapping:
+        return
+
+    table_name, id_column = mapping[entity_type]
+    try:
+        _table_columns(table_name)
+    except Exception:
+        return
+
+    category_id = ensure_category(category_name)
+    db.execute(
+        f"""
+        INSERT IGNORE INTO `{table_name}` (`{id_column}`, category_id)
+        VALUES (%s, %s)
+        """,
+        (entity_id, category_id),
+    )
+
+
+def _address(item: dict[str, Any]) -> str | None:
+    addr1 = _safe_text(item.get("addr1"))
+    addr2 = _safe_text(item.get("addr2"))
+    return " ".join(part for part in [addr1, addr2] if part) or None
+
+
+def _find_entity_id(table_name: str, id_column: str, name_column: str, region_id: int, name: str) -> int | None:
+    row = db.fetch_one(
+        f"""
+        SELECT `{id_column}` AS id
+        FROM `{table_name}`
+        WHERE region_id = %s AND `{name_column}` = %s
+        ORDER BY `{id_column}` DESC
+        LIMIT 1
+        """,
+        (region_id, name),
+    )
+    return int(row["id"]) if row else None
+
+
+
+
+def fetch_detail_bundle(service_key: str, content_id: str | None, content_type_id: str | None) -> dict[str, Any]:
+    if not content_id:
+        return {}
+    detail: dict[str, Any] = {}
+    try:
+        common_items = _api_items(
+            service_key,
+            TOUR_API_DETAIL_COMMON_URL,
+            {
+                "contentId": content_id,
+                "defaultYN": "Y",
+                "firstImageYN": "Y",
+                "areacodeYN": "Y",
+                "catcodeYN": "Y",
+                "addrinfoYN": "Y",
+                "mapinfoYN": "Y",
+                "overviewYN": "Y",
+                "numOfRows": 1,
+                "pageNo": 1,
+            },
+        )
+        if common_items:
+            detail["common"] = common_items[0]
+    except Exception:
+        pass
+    if content_type_id:
+        try:
+            intro_items = _api_items(
+                service_key,
+                TOUR_API_DETAIL_INTRO_URL,
+                {"contentId": content_id, "contentTypeId": content_type_id, "numOfRows": 1, "pageNo": 1},
+            )
+            if intro_items:
+                detail["intro"] = intro_items[0]
+        except Exception:
+            pass
+        try:
+            info_items = _api_items(
+                service_key,
+                TOUR_API_DETAIL_INFO_URL,
+                {"contentId": content_id, "contentTypeId": content_type_id, "numOfRows": 20, "pageNo": 1},
+            )
+            if info_items:
+                detail["info"] = info_items
+        except Exception:
+            pass
+    return detail
+
+
+def enrich_item_with_details(service_key: str, item: dict[str, Any]) -> dict[str, Any]:
+    content_id = _safe_text(item.get("contentid")) or _safe_text(item.get("contentId"))
+    content_type_id = _safe_text(item.get("contenttypeid")) or _safe_text(item.get("contentTypeId"))
+    detail = fetch_detail_bundle(service_key, content_id, content_type_id)
+    if not detail:
+        return dict(item)
+    merged = dict(item)
+    common = detail.get("common") or {}
+    intro = detail.get("intro") or {}
+    if common:
+        merged.update({k: v for k, v in common.items() if v not in (None, "")})
+    merged["_detail_common_json"] = common or None
+    merged["_detail_intro_json"] = intro or None
+    merged["_detail_info_json"] = detail.get("info") or None
+    return merged
+
+
+def _json_or_none(value: Any) -> str | None:
+    if value in (None, "", [], {}):
+        return None
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _plain_html(value: Any) -> str | None:
+    text = _safe_text(value)
+    if not text:
+        return None
+    return BeautifulSoup(text, "html.parser").get_text(" ", strip=True) or text
+
+
+def _official_base(item: dict[str, Any], content_type_id: str | None, content_id: str | None) -> dict[str, Any]:
+    return {
+        "external_id": content_id,
+        "content_type_id": content_type_id,
+        "content_type_name": CONTENT_TYPE_NAMES.get(str(content_type_id or ""), None),
+        "cat1": _safe_text(item.get("cat1")),
+        "cat2": _safe_text(item.get("cat2")),
+        "cat3": _safe_text(item.get("cat3")),
+        "source_url": visitkorea_search_url(_safe_text(item.get("title"))),
+        "detail_common_json": _json_or_none(item.get("_detail_common_json")),
+        "detail_intro_json": _json_or_none(item.get("_detail_intro_json")),
+        "detail_info_json": _json_or_none(item.get("_detail_info_json")),
+        "tour_api_updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+def save_tourapi_item(entity_type: str, item: dict[str, Any]) -> bool:
+    region_id = resolve_region_id(item.get("areacode"), item.get("sigungucode"))
+    if not region_id:
+        return False
+
+    content_id = _safe_text(item.get("contentid")) or _safe_text(item.get("contentId"))
+    content_type_id = _safe_text(item.get("contenttypeid")) or _safe_text(item.get("contentTypeId"))
+    title = _safe_text(item.get("title"))
+    if not title:
+        return False
+
+    first_image = _safe_text(item.get("firstimage")) or _safe_text(item.get("firstimage2"))
+    image_path, image_original_url, image_saved_at = save_image_from_url(
+        first_image,
+        entity_type,
+        content_id or title,
+    )
+
+    common = {
+        "region_id": region_id,
+        "address": _address(item),
+        "phone": _safe_text(item.get("tel")),
+        "image_path": image_path,
+        "image_original_url": image_original_url,
+        "image_saved_at": image_saved_at,
+    }
+    official = _official_base(item, content_type_id, content_id)
+    intro = item.get("_detail_intro_json") or {}
+    overview = _plain_html(item.get("overview")) or _address(item)
+
+    if entity_type == "places":
+        data = {
+            **common,
+            **official,
+            "place_name": title[:120],
+            "overview": overview or "한국관광공사 TourAPI에서 수집한 관광지 정보입니다.",
+            "latitude": _float_or_none(item.get("mapy")),
+            "longitude": _float_or_none(item.get("mapx")),
+            "use_fee": _plain_html(intro.get("usefee") or intro.get("usetime") or intro.get("usetimeculture") or intro.get("usetimeleports")),
+            "parking_fee": _plain_html(intro.get("parkingfee") or intro.get("parking")),
+            "opening_hours": _plain_html(intro.get("usetime") or intro.get("usetimeculture") or intro.get("usetimeleports")),
+            "has_tour_image": bool(image_path or image_original_url),
+            "photo_priority_score": 10 if (image_path or image_original_url) else 0,
+        }
+        _upsert_row("places", data, skip_update={"region_id", "place_name"})
+        entity_id = _find_entity_id("places", "place_id", "place_name", region_id, title[:120])
+        if entity_id:
+            attach_category("places", entity_id, "관광지")
+        return True
+
+    if entity_type == "festivals":
+        data = {
+            **common,
+            **official,
+            "festival_name": title[:150],
+            "start_date": _date_from_yyyymmdd(item.get("eventstartdate")) or _date_from_yyyymmdd(item.get("eventStartDate")),
+            "end_date": _date_from_yyyymmdd(item.get("eventenddate")) or _date_from_yyyymmdd(item.get("eventEndDate")),
+            "fee_info": _plain_html(intro.get("usetimefestival") or intro.get("sponsor1")),
+            "homepage": _plain_html((item.get("_detail_common_json") or {}).get("homepage")),
+            "overview": overview or "한국관광공사 TourAPI에서 수집한 축제 정보입니다.",
+            "event_place": _plain_html(intro.get("eventplace")),
+            "playtime": _plain_html(intro.get("playtime")),
+            "sponsor": _plain_html(intro.get("sponsor1") or intro.get("sponsor2")),
+        }
+        _upsert_row("festivals", data, skip_update={"region_id", "festival_name", "start_date"})
+        entity_id = _find_entity_id("festivals", "festival_id", "festival_name", region_id, title[:150])
+        if entity_id:
+            attach_category("festivals", entity_id, "축제")
+        return True
+
+    if entity_type == "restaurants":
+        data = {
+            **common,
+            **official,
+            "restaurant_name": title[:120],
+            "food_type": "음식점",
+            "first_menu": _plain_html(intro.get("firstmenu")),
+            "treat_menu": _plain_html(intro.get("treatmenu")),
+            "open_time": _plain_html(intro.get("opentimefood")),
+            "rest_date": _plain_html(intro.get("restdatefood")),
+            "parking_info": _plain_html(intro.get("parkingfood")),
+        }
+        _upsert_row("restaurants", data, skip_update={"region_id", "restaurant_name"})
+        entity_id = _find_entity_id("restaurants", "restaurant_id", "restaurant_name", region_id, title[:120])
+        if entity_id:
+            attach_category("restaurants", entity_id, "미식")
+        return True
+
+    if entity_type == "accommodations":
+        data = {
+            **common,
+            **official,
+            "accommodation_name": title[:120],
+            "checkin_time": _plain_html(intro.get("checkintime")),
+            "checkout_time": _plain_html(intro.get("checkouttime")),
+            "room_count": _plain_html(intro.get("roomcount")),
+            "reservation_url": _plain_html(intro.get("reservationurl")),
+            "parking_info": _plain_html(intro.get("parkinglodging")),
+        }
+        _upsert_row("accommodations", data, skip_update={"region_id", "accommodation_name"})
+        entity_id = _find_entity_id("accommodations", "accommodation_id", "accommodation_name", region_id, title[:120])
+        if entity_id:
+            attach_category("accommodations", entity_id, "숙소")
+        return True
+
+    return False
+
+
+def fetch_tourapi_festivals(service_key: str, limit: int = 100) -> list[dict[str, Any]]:
+    """
+    축제 수집:
+    1) searchFestival2로 날짜 포함 축제 수집
+    2) 결과가 0이면 areaBasedList2 + contentTypeId=15로 fallback 수집
+    """
+    sync_regions_from_tourapi(service_key, include_sigungu=True)
+
+    items: list[dict[str, Any]] = []
+    areas = _api_items(
+        service_key,
+        TOUR_API_AREA_CODE_URL,
+        {"numOfRows": 100, "pageNo": 1},
+    )
+
+    # 오늘 날짜로만 잡으면 미래 축제가 적을 수 있으므로 올해 1월 1일부터 조회
+    start_date = f"{date.today().year}0101"
+    per_area = max(1, min(limit, 50))
+
+    # 1차: searchFestival2 사용
+    for area in areas:
+        area_code = _safe_text(area.get("code"))
+        if not area_code:
+            continue
+
+        try:
+            rows = _api_items(
+                service_key,
+                TOUR_API_FESTIVAL_URL,
+                {
+                    "eventStartDate": start_date,
+                    "areaCode": area_code,
+                    "numOfRows": per_area,
+                    "pageNo": 1,
+                    "arrange": "A",
+                },
+            )
+            items.extend(rows)
+        except Exception as exc:
+            print(f"[축제 searchFestival2 실패] areaCode={area_code}: {exc}")
+
+        if len(items) >= limit:
+            break
+
+    # 2차: 그래도 0건이면 areaBasedList2 + contentTypeId=15로 fallback
+    if not items:
+        print("[축제] searchFestival2 결과 0건 → areaBasedList2 contentTypeId=15로 재시도")
+
+        for area in areas:
+            area_code = _safe_text(area.get("code"))
+            if not area_code:
+                continue
+
+            try:
+                rows = _api_items(
+                    service_key,
+                    TOUR_API_AREA_BASED_URL,
+                    {
+                        "contentTypeId": "15",
+                        "areaCode": area_code,
+                        "numOfRows": per_area,
+                        "pageNo": 1,
+                        "arrange": "A",
+                    },
+                )
+                items.extend(rows)
+            except Exception as exc:
+                print(f"[축제 areaBasedList2 실패] areaCode={area_code}: {exc}")
+
+            if len(items) >= limit:
+                break
 
     festivals: list[dict[str, Any]] = []
+
     for item in items[:limit]:
-        addr = _safe_text(item.get("addr1")) or ""
-        region_id = _region_id_from_address(addr)
+        item = enrich_item_with_details(service_key, item)
+        region_id = resolve_region_id(item.get("areacode"), item.get("sigungucode"))
+        if not region_id:
+            print(
+                "[축제 저장 스킵] 지역 매칭 실패:",
+                item.get("title"),
+                item.get("areacode"),
+                item.get("sigungucode"),
+            )
+            continue
+
+        title = _safe_text(item.get("title")) or "이름 미상 축제"
+        addr = _address(item) or ""
+        first_image = _safe_text(item.get("firstimage")) or _safe_text(item.get("firstimage2"))
+
+        image_path, image_original_url, image_saved_at = save_image_from_url(
+            first_image,
+            "festivals",
+            _safe_text(item.get("contentid")) or title,
+        )
+
+        official = _official_base(item, _safe_text(item.get("contenttypeid")) or "15", _safe_text(item.get("contentid")))
+        intro = item.get("_detail_intro_json") or {}
         festivals.append(
             {
                 "region_id": region_id,
-                "festival_name": _safe_text(item.get("title")) or "이름 미상 축제",
-                "start_date": _date_from_yyyymmdd(item.get("eventstartdate")),
-                "end_date": _date_from_yyyymmdd(item.get("eventenddate")),
-                "fee_info": None,
-                "homepage": None,
-                "overview": addr or "한국관광공사 TourAPI에서 수집한 축제 정보입니다.",
-                "source_url": _safe_text(item.get("firstimage")) or TOUR_API_FESTIVAL_URL,
-                "external_id": _safe_text(item.get("contentid")),
+                **official,
+                "festival_name": title[:150],
+                "start_date": _date_from_yyyymmdd(item.get("eventstartdate"))
+                or _date_from_yyyymmdd(item.get("eventStartDate")),
+                "end_date": _date_from_yyyymmdd(item.get("eventenddate"))
+                or _date_from_yyyymmdd(item.get("eventEndDate")),
+                "fee_info": _plain_html(intro.get("usetimefestival")),
+                "homepage": _plain_html((item.get("_detail_common_json") or {}).get("homepage")),
+                "overview": _plain_html(item.get("overview")) or addr or "한국관광공사 TourAPI에서 수집한 축제/행사 정보입니다.",
+                "event_place": _plain_html(intro.get("eventplace")),
+                "playtime": _plain_html(intro.get("playtime")),
+                "sponsor": _plain_html(intro.get("sponsor1") or intro.get("sponsor2")),
+                "image_path": image_path,
+                "image_original_url": image_original_url,
+                "image_saved_at": image_saved_at,
             }
         )
+
+    print(f"[축제] 최종 변환 완료: {len(festivals)}건")
     return festivals
 
 
-def fetch_tourapi_area_places(
-    service_key: str,
-    region_id: int,
-    content_type_id: str = "12",
-    limit: int = 20,
-    region_codes: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:
-    region_codes = region_codes or TOURAPI_REGION_CODES.get(region_id)
-    if not region_codes:
-        return []
+def fetch_area_based_items(service_key: str, entity_type: str, limit_per_area: int = 10) -> list[dict[str, Any]]:
+    content_type_id = CONTENT_TYPES[entity_type]
+    areas = _api_items(service_key, TOUR_API_AREA_CODE_URL, {"numOfRows": 100, "pageNo": 1})
+    all_items: list[dict[str, Any]] = []
 
-    params: dict[str, Any] = {
-        "numOfRows": max(1, min(int(limit), 100)),
-        "pageNo": 1,
-        "arrange": "Q",
-        "contentTypeId": content_type_id,
-        **region_codes,
-    }
-    items = _tourapi_items(TOUR_API_AREA_BASED_URL, service_key, params)
-
-    places: list[dict[str, Any]] = []
-    for item in items[:limit]:
-        title = _safe_text(item.get("title")) or "이름 미상 관광지"
-        address = _safe_text(item.get("addr1")) or _safe_text(item.get("addr2"))
-        tel = _safe_text(item.get("tel"))
-        text = " ".join(part for part in [title, address, tel] if part)
-        category_names = _category_names_for_item(item, content_type_id)
-        if any(category == "카페" for category in category_names):
-            category_names.append("미식")
-
-        tags = ", ".join(
-            dict.fromkeys(
-                [
-                    *category_names,
-                    "TourAPI",
-                    _safe_text(item.get("cat1")) or "",
-                    _safe_text(item.get("cat2")) or "",
-                    _safe_text(item.get("cat3")) or "",
-                ]
-            )
-        ).strip(", ")
-        places.append(
+    for area in areas:
+        area_code = _safe_text(area.get("code"))
+        if not area_code:
+            continue
+        rows = _api_items(
+            service_key,
+            TOUR_API_AREA_BASED_URL,
             {
-                "region_id": region_id,
-                "place_name": title[:120],
-                "address": address,
-                "overview": address or "한국관광공사 국문 관광정보 서비스에서 수집한 장소입니다.",
-                "phone": tel,
-                "latitude": _to_float(item.get("mapy")),
-                "longitude": _to_float(item.get("mapx")),
-                "image_url": _first_image(item),
-                "source_url": _first_image(item) or TOUR_API_AREA_BASED_URL,
-                "external_id": _safe_text(item.get("contentid")),
-                "tags": tags or None,
-                "indoor_outdoor": _infer_indoor_outdoor(text, content_type_id),
-                "recommended_for": _infer_recommended_for(text, content_type_id),
-                "budget_level": "보통" if content_type_id == "39" else None,
-                "opening_hours": None,
-                "source_api": "TourAPI areaBasedList2",
-                "content_type_id": content_type_id,
-                "category_names": category_names,
-            }
+                "contentTypeId": content_type_id,
+                "areaCode": area_code,
+                "numOfRows": limit_per_area,
+                "pageNo": 1,
+                "arrange": "A",
+            },
         )
-    return places
+        all_items.extend(rows)
+
+    return all_items
 
 
-def collect_tourapi_places(
-    service_key: str,
-    region_id: int,
-    content_type_ids: list[str],
-    limit_per_type: int = 20,
-) -> tuple[list[dict[str, Any]], str, str]:
-    collected: list[dict[str, Any]] = []
-    errors: list[str] = []
-    for content_type_id in content_type_ids:
+def collect_full_tourapi_data(service_key: str, limit_per_area: int = 10, include_sigungu: bool = True) -> dict[str, int]:
+    """지역 + 관광지 + 축제 + 숙소 + 음식점을 TourAPI에서 다시 수집해 DB에 저장."""
+    stats = {
+        "regions": sync_regions_from_tourapi(service_key, include_sigungu=include_sigungu),
+        "places": 0,
+        "festivals": 0,
+        "restaurants": 0,
+        "accommodations": 0,
+    }
+
+    for entity_type in ["places", "restaurants", "accommodations"]:
         try:
-            collected.extend(fetch_tourapi_area_places(service_key, region_id, content_type_id, limit_per_type))
+            items = fetch_area_based_items(service_key, entity_type, limit_per_area=limit_per_area)
+            for item in items:
+                enriched = enrich_item_with_details(service_key, item)
+                if save_tourapi_item(entity_type, enriched):
+                    stats[entity_type] += 1
         except Exception as exc:
-            errors.append(f"{content_type_id}: {exc}")
+            db.log_crawl(
+                f"tourapi_{entity_type}",
+                TOUR_API_AREA_BASED_URL,
+                "FAILED",
+                stats[entity_type],
+                f"{entity_type} 수집 실패: {exc}",
+            )
 
-    if collected:
-        message = f"TourAPI 장소 {len(collected)}건을 수집했습니다."
-        if errors:
-            message += " 일부 유형은 실패했습니다: " + " / ".join(errors)
-        return collected, "SUCCESS", message
-    if errors:
-        return [], "FAILED", "TourAPI 장소 수집 실패: " + " / ".join(errors)
-    return [], "FAILED", "TourAPI 장소 수집 결과가 비어 있습니다."
-
-
-def collect_tourapi_full_dataset(
-    service_key: str,
-    region_ids: list[int] | None = None,
-    region_names: list[str] | None = None,
-    limit_per_type: int = 35,
-    festival_limit: int = 100,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, str]:
-    target_regions = _region_specs(region_names=region_names, region_ids=region_ids)
-    places: list[dict[str, Any]] = []
-    festivals: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    for region_name, region_id, region_codes in target_regions:
-        for content_type_id in FULL_COLLECTION_CONTENT_TYPES:
-            try:
-                places.extend(
-                    fetch_tourapi_area_places(
-                        service_key,
-                        region_id,
-                        content_type_id,
-                        limit_per_type,
-                        region_codes=region_codes,
-                    )
-                )
-            except Exception as exc:
-                errors.append(f"{region_name} type {content_type_id}: {exc}")
-
+    # 축제는 행사 시작/종료일을 받기 위해 searchFestival2 사용
     try:
-        festivals = fetch_tourapi_festivals(service_key, festival_limit)
+        festivals = fetch_tourapi_festivals(service_key, limit=max(20, limit_per_area * 17))
+        for festival in festivals:
+            _upsert_row("festivals", festival, skip_update={"region_id", "festival_name", "start_date"})
+            stats["festivals"] += 1
     except Exception as exc:
-        errors.append(f"festival: {exc}")
+        db.log_crawl("tourapi_festivals", TOUR_API_FESTIVAL_URL, "FAILED", stats["festivals"], f"축제 수집 실패: {exc}")
 
-    total = len(places) + len(festivals)
-    if total:
-        status = "SUCCESS" if not errors else "FALLBACK"
-        message = f"TourAPI 전체 수집 {total}건 완료: 장소 {len(places)}건, 축제 {len(festivals)}건"
-        if errors:
-            message += " / 일부 실패: " + " / ".join(errors[:5])
-        return places, festivals, status, message
-
-    message = "TourAPI 전체 수집 결과가 비어 있습니다."
-    if errors:
-        message += " " + " / ".join(errors[:5])
-    return [], [], "FAILED", message
-
-
-def _previous_month_params(limit: int) -> dict[str, Any]:
-    today = date.today()
-    month = today.month - 1
-    year = today.year
-    if month == 0:
-        month = 12
-        year -= 1
-    base_ym = f"{year}{month:02d}"
-    return {
-        "numOfRows": max(1, min(int(limit), 100)),
-        "pageNo": 1,
-        "baseYm": base_ym,
-        "startYm": base_ym,
-        "endYm": base_ym,
-        "baseYmd": f"{base_ym}01",
-        "startYmd": f"{base_ym}01",
-        "endYmd": f"{base_ym}28",
-    }
-
-
-def fetch_tour_photos(service_key: str, keyword: str | None = None, limit: int = 30) -> tuple[list[dict[str, Any]], str | None, str, str]:
-    params: dict[str, Any] = {
-        "numOfRows": max(1, min(int(limit), 100)),
-        "pageNo": 1,
-        "arrange": "A",
-    }
-    if keyword:
-        params["keyword"] = keyword
-    service = APPROVED_API_SERVICES["PHOTOG"]
-    return _try_api_candidates(service_key, service["endpoints"], params)
-
-
-def _photo_row(item: dict[str, Any], keyword: str | None = None) -> dict[str, Any]:
-    title = _safe_text(_coalesce(item, "galTitle", "title", "photoTitle", "cntntsNm")) or "제목 없음"
-    location = _safe_text(_coalesce(item, "galPhotographyLocation", "photographyLocation", "location", "addr1"))
-    keywords = _safe_text(_coalesce(item, "galSearchKeyword", "keywords", "tag", "searchKeyword"))
-    region_name = keyword if keyword and keyword in " ".join([title, location or "", keywords or ""]) else None
-    return {
-        "external_id": _safe_text(_coalesce(item, "galContentId", "contentId", "photoId", "id")),
-        "region_name": region_name,
-        "place_name": title[:150],
-        "title": title[:200],
-        "image_url": _safe_text(_coalesce(item, "galWebImageUrl", "webImageUrl", "imageUrl", "imgUrl", "firstimage")),
-        "location": location,
-        "photographer": _safe_text(_coalesce(item, "galPhotographer", "photographer")),
-        "shot_date": _safe_text(_coalesce(item, "galPhotographyMonth", "photographyMonth", "shotDate", "createdtime")),
-        "keywords": keywords,
-        "raw_json": item,
-    }
-
-
-def _save_tour_photos(rows: list[dict[str, Any]], keyword: str | None = None) -> int:
-    saved = 0
-    for item in rows:
-        try:
-            db.upsert_tour_photo(_photo_row(item, keyword))
-            saved += 1
-        except Exception:
-            continue
-    return saved
-
-
-def _save_visitor_rows(items: list[dict[str, Any]], source_api: str) -> int:
-    saved = 0
-    excluded = {"areaCode", "signguCode", "areaNm", "signguNm", "baseYmd", "baseYm", "daywkDivCd", "daywkDivNm", "touDivCd", "touDivNm"}
-    for item in items:
-        metric_name, fallback_value = _first_numeric_field(item, excluded)
-        try:
-            db.upsert_region_visitor_stat(
-                {
-                    "source_api": source_api,
-                    "region_name": _region_name_from_item(item),
-                    "stat_date": _safe_text(_coalesce(item, "baseYmd", "baseYm", "stdYmd", "stdYm")),
-                    "visitor_type": _safe_text(_coalesce(item, "touDivNm", "visitorType", "typeNm", "daywkDivNm", metric_name or "")),
-                    "visitor_count": _numeric_value(item, "touNum", "visitorCount", "visitrCnt", "cnt", "totalCnt") or fallback_value,
-                    "raw_json": item,
-                }
-            )
-            saved += 1
-        except Exception:
-            continue
-    return saved
-
-
-def _save_concentration_rows(items: list[dict[str, Any]]) -> int:
-    saved = 0
-    for item in items:
-        name = _safe_text(_coalesce(item, "tAtsNm", "tatsNm", "tourspotNm", "poiNm", "attractionName", "rlteTatsNm"))
-        if not name:
-            continue
-        try:
-            db.upsert_attraction_concentration(
-                {
-                    "attraction_name": name[:180],
-                    "region_name": _region_name_from_item(item),
-                    "base_date": _safe_text(_coalesce(item, "baseYmd", "baseYm", "stdYmd")),
-                    "forecast_date": _safe_text(_coalesce(item, "fcstYmd", "forecastYmd", "predYmd", "baseYmd")),
-                    "concentration_score": _numeric_value(item, "cnctrRate", "cnctrScore", "concentrationRate", "predictionValue", "rate"),
-                    "raw_json": item,
-                }
-            )
-            saved += 1
-        except Exception:
-            continue
-    return saved
-
-
-def _save_related_rows(items: list[dict[str, Any]]) -> int:
-    saved = 0
-    for item in items:
-        origin = _safe_text(_coalesce(item, "baseTatsNm", "originName", "hubTatsNm", "tAtsNm", "tatsNm"))
-        related = _safe_text(_coalesce(item, "rlteTatsNm", "relatedName", "rlteNm", "rlteTatsName", "poiNm"))
-        if not origin or not related or origin == related:
-            continue
-        try:
-            db.upsert_related_attraction(
-                {
-                    "origin_name": origin[:180],
-                    "related_name": related[:180],
-                    "relation_type": _safe_text(_coalesce(item, "rlteCtgryNm", "rlteType", "category", "typeNm")),
-                    "rank_no": _coalesce(item, "rlteRank", "rank", "rankNo", "rnum"),
-                    "score": _numeric_value(item, "score", "rlteScore", "naviCnt", "searchCnt", "srchCnt"),
-                    "region_name": _region_name_from_item(item),
-                    "raw_json": item,
-                }
-            )
-            saved += 1
-        except Exception:
-            continue
-    return saved
-
-
-def _save_center_rows(items: list[dict[str, Any]]) -> int:
-    saved = 0
-    for item in items:
-        name = _safe_text(_coalesce(item, "hubTatsNm", "tAtsNm", "tatsNm", "tourspotNm", "poiNm", "attractionName"))
-        if not name:
-            continue
-        try:
-            db.upsert_center_attraction(
-                {
-                    "region_name": _region_name_from_item(item),
-                    "attraction_name": name[:180],
-                    "rank_no": _coalesce(item, "hubRank", "rank", "rankNo", "rnum"),
-                    "navi_count": _numeric_value(item, "naviCnt", "srchCnt", "searchCnt", "visitCnt", "cnt"),
-                    "raw_json": item,
-                }
-            )
-            saved += 1
-        except Exception:
-            continue
-    return saved
-
-
-def _save_regional_metric_rows(items: list[dict[str, Any]], source_api: str, metric_group: str) -> int:
-    saved = 0
-    excluded = {
-        "areaCode",
-        "signguCode",
-        "areaNm",
-        "signguNm",
-        "sidoNm",
-        "ctprvnNm",
-        "baseYmd",
-        "baseYm",
-        "stdYmd",
-        "stdYm",
-        "rnum",
-    }
-    for item in items:
-        region_name = _region_name_from_item(item)
-        stat_date = _safe_text(_coalesce(item, "baseYmd", "baseYm", "stdYmd", "stdYm"))
-        for key, value in item.items():
-            if key in excluded or value in (None, ""):
-                continue
-            try:
-                numeric_value = float(str(value).replace(",", ""))
-            except ValueError:
-                continue
-            try:
-                db.upsert_regional_demand_metric(
-                    {
-                        "source_api": source_api,
-                        "region_name": region_name,
-                        "metric_group": metric_group,
-                        "metric_name": key,
-                        "metric_value": numeric_value,
-                        "stat_date": stat_date,
-                        "raw_json": item,
-                    }
-                )
-                saved += 1
-            except Exception:
-                continue
-    return saved
-
-
-def _log_bundle_result(service_code: str, endpoint_url: str | None, status: str, count: int, message: str) -> dict[str, Any]:
-    service = APPROVED_API_SERVICES[service_code]
-    db.log_tour_api_usage(service_code, service["name"], endpoint_url, status, count, message)
-    return {
-        "service_code": service_code,
-        "service_name": service["name"],
-        "status": status,
-        "saved_count": count,
-        "message": message,
-        "endpoint_url": endpoint_url,
-    }
-
-
-def collect_approved_api_bundle(
-    service_key: str | None = None,
-    region_names: list[str] | None = None,
-    place_names: list[str] | None = None,
-    limit_per_type: int = 25,
-    advanced_limit: int = 80,
-    photo_limit_per_keyword: int = 12,
-) -> list[dict[str, Any]]:
-    key = service_key or configured_tourapi_key()
-    if not key:
-        raise ValueError("TOUR_API_SERVICE_KEY가 설정되어 있지 않습니다.")
-
-    db.ensure_recommendation_schema()
-    db.ensure_advanced_api_schema()
-    target_region_names = region_names or list(TOURAPI_REGION_META.keys())
-    ensure_known_regions(target_region_names)
-    results: list[dict[str, Any]] = []
-
-    try:
-        places, festivals, status, message = collect_tourapi_full_dataset(
-            key,
-            region_names=target_region_names,
-            limit_per_type=limit_per_type,
-            festival_limit=min(100, max(20, advanced_limit)),
-        )
-        saved = 0
-        for row in places:
-            try:
-                db.upsert_tourapi_place(row)
-                saved += 1
-            except Exception:
-                continue
-        for row in festivals:
-            try:
-                db.upsert_festival(row)
-                saved += 1
-            except Exception:
-                continue
-        results.append(_log_bundle_result("KOR", TOUR_API_AREA_BASED_URL, status, saved, message))
-    except Exception as exc:
-        results.append(_log_bundle_result("KOR", TOUR_API_AREA_BASED_URL, "FAILED", 0, str(exc)))
-
-    photo_saved = 0
-    photo_messages: list[str] = []
-    photo_endpoint: str | None = None
-    photo_keywords = list(dict.fromkeys([*target_region_names, *(place_names or [])]))[:30]
-    for keyword in photo_keywords:
-        items, endpoint_url, status, message = fetch_tour_photos(key, keyword, photo_limit_per_keyword)
-        photo_endpoint = endpoint_url or photo_endpoint
-        if status == "SUCCESS":
-            photo_saved += _save_tour_photos(items, keyword)
-        else:
-            photo_messages.append(f"{keyword}: {message}")
-    photo_status = "SUCCESS" if photo_saved else "FAILED"
-    photo_message = f"관광사진 {photo_saved}건 저장"
-    if photo_messages:
-        photo_message += " / 일부 실패: " + " / ".join(photo_messages[:3])
-    results.append(_log_bundle_result("PHOTOG", photo_endpoint, photo_status, photo_saved, photo_message))
-
-    generic_plan = [
-        ("DATALAB", _previous_month_params(advanced_limit), lambda items: _save_visitor_rows(items, "DATALAB")),
-        ("TATSCNCTR", _previous_month_params(advanced_limit), _save_concentration_rows),
-        ("TARRLTE", _previous_month_params(advanced_limit), _save_related_rows),
-        ("LOCGOHUB", _previous_month_params(advanced_limit), _save_center_rows),
-        ("DMANDDVRST", _previous_month_params(advanced_limit), lambda items: _save_regional_metric_rows(items, "DMANDDVRST", "관광 다양성")),
-        ("DMANDRESR", _previous_month_params(advanced_limit), lambda items: _save_regional_metric_rows(items, "DMANDRESR", "관광 자원 수요")),
-    ]
-    for service_code, params, saver in generic_plan:
-        service = APPROVED_API_SERVICES[service_code]
-        items, endpoint_url, status, message = _try_api_candidates(key, service["endpoints"], params)
-        saved_count = 0
-        if status == "SUCCESS":
-            try:
-                saved_count = saver(items)
-            except Exception as exc:
-                status = "FAILED"
-                message = f"저장 실패: {exc}"
-        results.append(_log_bundle_result(service_code, endpoint_url, status, saved_count, message))
-
-    return results
+    db.log_crawl(
+        "tourapi_full_sync",
+        TOUR_API_BASE_URL,
+        "SUCCESS",
+        sum(v for k, v in stats.items() if k != "regions"),
+        f"TourAPI 전체 동기화 완료: {stats}",
+    )
+    return stats
 
 
 def crawl_visitkorea_festival_titles(limit: int = 10) -> list[dict[str, Any]]:
@@ -915,6 +947,9 @@ def crawl_visitkorea_festival_titles(limit: int = 10) -> list[dict[str, Any]]:
 
     seen: set[str] = set()
     festivals: list[dict[str, Any]] = []
+    fallback_region = db.fetch_one("SELECT region_id FROM regions ORDER BY region_id LIMIT 1")
+    fallback_region_id = int(fallback_region["region_id"]) if fallback_region else 1
+
     for node in candidates:
         title = node.get_text(" ", strip=True)
         if len(title) < 3 or title in seen:
@@ -922,7 +957,7 @@ def crawl_visitkorea_festival_titles(limit: int = 10) -> list[dict[str, Any]]:
         seen.add(title)
         festivals.append(
             {
-                "region_id": 1,
+                "region_id": fallback_region_id,
                 "festival_name": title[:150],
                 "start_date": None,
                 "end_date": None,
@@ -1008,7 +1043,8 @@ def collect_festival_data(service_key: str | None = None, limit: int = 20) -> tu
         try:
             festivals = fetch_tourapi_festivals(service_key, limit)
             if festivals:
-                return festivals, "SUCCESS", "TourAPI 축제 데이터를 수집했습니다."
+                return festivals, "SUCCESS", "TourAPI 지역 동기화 후 전국 축제 데이터를 수집했습니다."
+            return [], "SUCCESS", "TourAPI 호출은 성공했지만 수집된 축제가 없습니다."
         except Exception as exc:
             return fallback_festivals(), "FALLBACK", f"TourAPI 호출 실패로 샘플 축제를 사용했습니다: {exc}"
 
@@ -1020,3 +1056,59 @@ def collect_festival_data(service_key: str | None = None, limit: int = 20) -> tu
         return fallback_festivals(), "FALLBACK", f"HTML 크롤링 실패로 샘플 축제를 사용했습니다: {exc}"
 
     return fallback_festivals(), "FALLBACK", "수집된 축제 데이터가 없어 샘플 데이터를 사용했습니다."
+
+
+def collect_approved_api_bundle(service_key: str | None = None, limit_per_area: int = 20) -> dict[str, Any]:
+    """collect_approved_apis.py에서 바로 호출하는 호환용 전체 수집 함수."""
+    key = service_key or configured_service_key()
+    if not key:
+        return {
+            "status": "FAILED",
+            "message": "TOUR_API_SERVICE_KEY 또는 TOUR_API_KEY 환경변수가 필요합니다.",
+            "stats": {},
+        }
+
+    try:
+        stats = collect_full_tourapi_data(key, limit_per_area=limit_per_area, include_sigungu=True)
+        return {"status": "SUCCESS", "message": "TourAPI 전체 수집 완료", "stats": stats}
+    except Exception as exc:
+        return {"status": "FAILED", "message": str(exc), "stats": {}}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Travel 프로젝트 TourAPI 데이터 재수집기")
+    parser.add_argument("--service-key", default=os.getenv("TOUR_API_KEY"), help="한국관광공사 TourAPI 서비스키")
+    parser.add_argument("--regions-only", action="store_true", help="지역 코드만 동기화")
+    parser.add_argument("--all", action="store_true", help="지역/관광지/음식점/숙소/축제 전체 수집")
+    parser.add_argument("--limit-per-area", type=int, default=10, help="광역 지역 1개당 수집 개수")
+    parser.add_argument("--no-sigungu", action="store_true", help="시군구 지역은 만들지 않고 광역 지역만 동기화")
+    args = parser.parse_args()
+
+    if not args.service_key:
+        raise SystemExit("TourAPI 서비스키가 필요합니다. --service-key 또는 TOUR_API_KEY 환경변수를 사용하세요.")
+
+    if args.regions_only:
+        count = sync_regions_from_tourapi(args.service_key, include_sigungu=not args.no_sigungu)
+        print(f"지역 동기화 완료: {count}건")
+        return
+
+    if args.all:
+        stats = collect_full_tourapi_data(
+            args.service_key,
+            limit_per_area=args.limit_per_area,
+            include_sigungu=not args.no_sigungu,
+        )
+        print(f"전체 수집 완료: {stats}")
+        return
+
+    festivals, status, message = collect_festival_data(args.service_key, limit=args.limit_per_area * 17)
+    inserted = 0
+    for row in festivals:
+        _upsert_row("festivals", row, skip_update={"region_id", "festival_name", "start_date"})
+        inserted += 1
+    db.log_crawl("tourapi_festival_cli", TOUR_API_FESTIVAL_URL, status, inserted, message)
+    print(f"축제 수집 완료: {inserted}건, {status}, {message}")
+
+
+if __name__ == "__main__":
+    main()

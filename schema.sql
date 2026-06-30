@@ -40,9 +40,13 @@ CREATE TABLE members (
 
 CREATE TABLE regions (
   region_id INT AUTO_INCREMENT PRIMARY KEY,
-  region_name VARCHAR(50) NOT NULL UNIQUE,
+  region_name VARCHAR(80) NOT NULL UNIQUE,
   province VARCHAR(50) NOT NULL,
-  description VARCHAR(255) NULL
+  description VARCHAR(255) NULL,
+  tour_area_code VARCHAR(10) NULL,
+  tour_sigungu_code VARCHAR(10) NULL,
+  kakao_keyword VARCHAR(100) NULL,
+  INDEX idx_regions_tour_code (tour_area_code, tour_sigungu_code)
 ) ENGINE=InnoDB;
 
 CREATE TABLE categories (
@@ -64,12 +68,28 @@ CREATE TABLE places (
   external_id VARCHAR(80) NULL,
   average_rating DECIMAL(3, 2) NOT NULL DEFAULT 0.00,
   image_url VARCHAR(500) NULL,
+  image_path VARCHAR(500) NULL,
+  image_original_url VARCHAR(1000) NULL,
+  image_saved_at DATETIME NULL,
   tags VARCHAR(500) NULL,
-  indoor_outdoor ENUM('실내', '야외', '혼합') NULL,
-  recommended_for VARCHAR(255) NULL,
-  budget_level ENUM('저렴', '보통', '비쌈') NULL,
   opening_hours VARCHAR(255) NULL,
   source_api VARCHAR(80) NULL,
+  content_type_id VARCHAR(20) NULL,
+  content_type_name VARCHAR(80) NULL,
+  cat1 VARCHAR(80) NULL,
+  cat2 VARCHAR(80) NULL,
+  cat3 VARCHAR(80) NULL,
+  lcls_systm1 VARCHAR(100) NULL,
+  lcls_systm2 VARCHAR(100) NULL,
+  lcls_systm3 VARCHAR(100) NULL,
+  use_fee VARCHAR(500) NULL,
+  parking_fee VARCHAR(255) NULL,
+  has_tour_image BOOLEAN NOT NULL DEFAULT FALSE,
+  photo_priority_score DECIMAL(8, 2) NOT NULL DEFAULT 0,
+  detail_common_json LONGTEXT NULL,
+  detail_intro_json LONGTEXT NULL,
+  detail_info_json LONGTEXT NULL,
+  tour_api_updated_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_places_regions FOREIGN KEY (region_id) REFERENCES regions(region_id),
@@ -90,6 +110,18 @@ CREATE TABLE festivals (
   overview TEXT NULL,
   source_url VARCHAR(500) NULL,
   external_id VARCHAR(80) NULL,
+  content_type_id VARCHAR(20) NULL,
+  content_type_name VARCHAR(80) NULL,
+  cat1 VARCHAR(80) NULL,
+  cat2 VARCHAR(80) NULL,
+  cat3 VARCHAR(80) NULL,
+  event_place VARCHAR(255) NULL,
+  playtime VARCHAR(255) NULL,
+  sponsor VARCHAR(255) NULL,
+  detail_intro_json LONGTEXT NULL,
+  image_path VARCHAR(500) NULL,
+  image_original_url VARCHAR(1000) NULL,
+  image_saved_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_festivals_regions FOREIGN KEY (region_id) REFERENCES regions(region_id),
@@ -103,8 +135,23 @@ CREATE TABLE accommodations (
   region_id INT NOT NULL,
   accommodation_name VARCHAR(120) NOT NULL,
   address VARCHAR(255) NULL,
-  price_level ENUM('LOW', 'MID', 'HIGH') NOT NULL DEFAULT 'MID',
   phone VARCHAR(50) NULL,
+  source_url VARCHAR(500) NULL,
+  external_id VARCHAR(80) NULL,
+  content_type_id VARCHAR(20) NULL,
+  content_type_name VARCHAR(80) NULL,
+  cat1 VARCHAR(80) NULL,
+  cat2 VARCHAR(80) NULL,
+  cat3 VARCHAR(80) NULL,
+  checkin_time VARCHAR(120) NULL,
+  checkout_time VARCHAR(120) NULL,
+  room_count VARCHAR(120) NULL,
+  reservation_url VARCHAR(500) NULL,
+  parking_info VARCHAR(255) NULL,
+  detail_intro_json LONGTEXT NULL,
+  image_path VARCHAR(500) NULL,
+  image_original_url VARCHAR(1000) NULL,
+  image_saved_at DATETIME NULL,
   CONSTRAINT fk_accommodations_regions FOREIGN KEY (region_id) REFERENCES regions(region_id),
   CONSTRAINT uq_accommodations_region_name UNIQUE (region_id, accommodation_name)
 ) ENGINE=InnoDB;
@@ -115,7 +162,23 @@ CREATE TABLE restaurants (
   restaurant_name VARCHAR(120) NOT NULL,
   food_type VARCHAR(50) NOT NULL,
   address VARCHAR(255) NULL,
-  price_level ENUM('LOW', 'MID', 'HIGH') NOT NULL DEFAULT 'MID',
+  phone VARCHAR(80) NULL,
+  source_url VARCHAR(500) NULL,
+  external_id VARCHAR(80) NULL,
+  content_type_id VARCHAR(20) NULL,
+  content_type_name VARCHAR(80) NULL,
+  cat1 VARCHAR(80) NULL,
+  cat2 VARCHAR(80) NULL,
+  cat3 VARCHAR(80) NULL,
+  first_menu VARCHAR(255) NULL,
+  treat_menu VARCHAR(500) NULL,
+  open_time VARCHAR(255) NULL,
+  rest_date VARCHAR(255) NULL,
+  parking_info VARCHAR(255) NULL,
+  detail_intro_json LONGTEXT NULL,
+  image_path VARCHAR(500) NULL,
+  image_original_url VARCHAR(1000) NULL,
+  image_saved_at DATETIME NULL,
   CONSTRAINT fk_restaurants_regions FOREIGN KEY (region_id) REFERENCES regions(region_id),
   CONSTRAINT uq_restaurants_region_name UNIQUE (region_id, restaurant_name)
 ) ENGINE=InnoDB;
@@ -127,6 +190,9 @@ CREATE TABLE place_categories (
   CONSTRAINT fk_place_categories_places FOREIGN KEY (place_id) REFERENCES places(place_id) ON DELETE CASCADE,
   CONSTRAINT fk_place_categories_categories FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+
+
 
 CREATE TABLE favorites (
   favorite_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -289,6 +355,54 @@ CREATE TABLE regional_demand_metrics (
   INDEX idx_regional_demand_group (metric_group)
 ) ENGINE=InnoDB;
 
+
+CREATE TABLE live_kakao_places (
+  kakao_place_id VARCHAR(80) PRIMARY KEY,
+  region_name VARCHAR(80) NULL,
+  keyword VARCHAR(120) NULL,
+  place_name VARCHAR(180) NOT NULL,
+  category_name VARCHAR(255) NULL,
+  address_name VARCHAR(255) NULL,
+  road_address_name VARCHAR(255) NULL,
+  phone VARCHAR(80) NULL,
+  place_url VARCHAR(500) NULL,
+  latitude DECIMAL(10, 7) NULL,
+  longitude DECIMAL(10, 7) NULL,
+  raw_json LONGTEXT NULL,
+  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_live_kakao_region (region_name),
+  INDEX idx_live_kakao_keyword (keyword)
+) ENGINE=InnoDB;
+
+CREATE TABLE weather_cache (
+  weather_id INT AUTO_INCREMENT PRIMARY KEY,
+  region_name VARCHAR(80) NULL,
+  target_date DATE NULL,
+  latitude DECIMAL(10, 7) NULL,
+  longitude DECIMAL(10, 7) NULL,
+  weather_source VARCHAR(40) NULL,
+  condition_text VARCHAR(120) NULL,
+  temp DECIMAL(6, 2) NULL,
+  feels_like DECIMAL(6, 2) NULL,
+  humidity DECIMAL(6, 2) NULL,
+  wind_speed DECIMAL(6, 2) NULL,
+  raw_json LONGTEXT NULL,
+  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_weather_region_date (region_name, target_date)
+) ENGINE=InnoDB;
+
+CREATE TABLE transport_estimates (
+  estimate_id INT AUTO_INCREMENT PRIMARY KEY,
+  origin_text VARCHAR(180) NOT NULL,
+  destination_text VARCHAR(180) NOT NULL,
+  travel_date DATE NULL,
+  people INT NOT NULL DEFAULT 1,
+  provider VARCHAR(40) NOT NULL DEFAULT 'openai',
+  estimate_json LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_transport_route (origin_text, destination_text, travel_date)
+) ENGINE=InnoDB;
+
 ALTER TABLE members
   ADD CONSTRAINT fk_members_preferred_region FOREIGN KEY (preferred_region_id) REFERENCES regions(region_id);
 
@@ -360,19 +474,19 @@ INSERT INTO festivals (region_id, place_id, festival_name, start_date, end_date,
 (4, NULL, '제주 들불축제', '2027-03-01', '2027-03-03', '무료', NULL, '제주의 자연과 전통문화를 체험하는 대표 축제입니다.', NULL),
 (5, NULL, '강릉 커피축제', '2026-10-10', '2026-10-13', '무료', NULL, '커피 도시 강릉의 카페와 로컬 문화를 즐길 수 있는 축제입니다.', NULL);
 
-INSERT INTO accommodations (region_id, accommodation_name, address, price_level, phone) VALUES
-(1, '종로 시티스테이', '서울 종로구', 'MID', '02-0000-1000'),
-(2, '해운대 오션호텔', '부산 해운대구', 'HIGH', '051-000-2000'),
-(3, '경주 한옥스테이', '경북 경주시', 'MID', '054-000-3000'),
-(4, '제주 바람스테이', '제주 제주시', 'MID', '064-000-4000'),
-(5, '강릉 커피펜션', '강원 강릉시', 'LOW', '033-000-5000');
+INSERT INTO accommodations (region_id, accommodation_name, address, phone) VALUES
+(1, '종로 시티스테이', '서울 종로구', '02-0000-1000'),
+(2, '해운대 오션호텔', '부산 해운대구', '051-000-2000'),
+(3, '경주 한옥스테이', '경북 경주시', '054-000-3000'),
+(4, '제주 바람스테이', '제주 제주시', '064-000-4000'),
+(5, '강릉 커피펜션', '강원 강릉시', '033-000-5000');
 
-INSERT INTO restaurants (region_id, restaurant_name, food_type, address, price_level) VALUES
-(1, '서촌 한식당', '한식', '서울 종로구', 'MID'),
-(2, '해운대 밀면집', '밀면', '부산 해운대구', 'LOW'),
-(3, '경주 쌈밥거리', '한식', '경북 경주시', 'MID'),
-(4, '제주 흑돼지거리', '흑돼지', '제주 제주시', 'HIGH'),
-(5, '안목 커피로스터스', '카페', '강원 강릉시', 'MID');
+INSERT INTO restaurants (region_id, restaurant_name, food_type, address) VALUES
+(1, '서촌 한식당', '한식', '서울 종로구'),
+(2, '해운대 밀면집', '밀면', '부산 해운대구'),
+(3, '경주 쌈밥거리', '한식', '경북 경주시'),
+(4, '제주 흑돼지거리', '흑돼지', '제주 제주시'),
+(5, '안목 커피로스터스', '카페', '강원 강릉시');
 
 INSERT INTO favorites (member_id, place_id)
 SELECT m.member_id, p.place_id
