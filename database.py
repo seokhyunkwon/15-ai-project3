@@ -453,6 +453,32 @@ def get_regions() -> list[dict[str, Any]]:
     return fetch_all("SELECT region_id, region_name, province, description FROM regions ORDER BY region_name")
 
 
+def get_region_options() -> list[dict[str, Any]]:
+    columns = get_table_columns("regions")
+    optional_columns = []
+    for column in ("tour_area_code", "tour_sigungu_code", "kakao_keyword"):
+        optional_columns.append(column if column in columns else f"NULL AS {column}")
+    return fetch_all(
+        f"""
+        SELECT
+          region_id,
+          region_name,
+          province,
+          description,
+          {", ".join(optional_columns)}
+        FROM regions
+        ORDER BY
+          CASE WHEN tour_area_code REGEXP '^[0-9]+$' THEN CAST(tour_area_code AS UNSIGNED) ELSE 999 END,
+          CASE
+            WHEN tour_sigungu_code IS NULL OR tour_sigungu_code = '' THEN 0
+            WHEN tour_sigungu_code REGEXP '^[0-9]+$' THEN CAST(tour_sigungu_code AS UNSIGNED)
+            ELSE 999
+          END,
+          region_name
+        """
+    )
+
+
 def ensure_region(region_name: str, province: str | None = None, description: str | None = None) -> int:
     existing = fetch_one("SELECT region_id FROM regions WHERE region_name = %s", (region_name,))
     if existing:
@@ -506,6 +532,41 @@ def normalize_region_keyword(region_keyword: str | None) -> str:
     return aliases.get(keyword, keyword)
 
 
+def region_keyword_candidates(region_keyword: str | None) -> list[str]:
+    if not region_keyword:
+        return ["전국"]
+    keyword = str(region_keyword).strip()
+    if keyword.endswith(" 전체"):
+        keyword = keyword[:-3].strip()
+    alias_pairs = {
+        "서울": "서울특별시",
+        "부산": "부산광역시",
+        "대구": "대구광역시",
+        "인천": "인천광역시",
+        "광주": "광주광역시",
+        "대전": "대전광역시",
+        "울산": "울산광역시",
+        "세종": "세종특별자치시",
+        "경기": "경기도",
+        "강원": "강원특별자치도",
+        "충북": "충청북도",
+        "충남": "충청남도",
+        "전북": "전북특별자치도",
+        "전남": "전라남도",
+        "경북": "경상북도",
+        "경남": "경상남도",
+        "제주": "제주특별자치도",
+    }
+    candidates = [keyword, normalize_region_keyword(keyword)]
+    if keyword in alias_pairs:
+        candidates.append(alias_pairs[keyword])
+    for short_name, full_name in alias_pairs.items():
+        if keyword == full_name:
+            candidates.append(short_name)
+            break
+    return [item for item in dict.fromkeys(candidates) if item and item != "전국"]
+
+
 def region_match_sql(alias: str, region_keyword: str | None, params: list[Any]) -> str:
     """regions 테이블 기준 지역 필터를 만든다.
 
@@ -513,12 +574,15 @@ def region_match_sql(alias: str, region_keyword: str | None, params: list[Any]) 
     address 기준으로 필터링하면 region_id가 잘못 들어간 기존 데이터 때문에
     '대구 검색인데 부산 region_id가 붙은 행'이 다시 노출될 수 있다.
     """
-    keyword = normalize_region_keyword(region_keyword)
-    if not keyword or keyword == "전국":
+    candidates = region_keyword_candidates(region_keyword)
+    if not candidates or candidates == ["전국"]:
         return ""
-    like = f"%{keyword}%"
-    params.extend([keyword, keyword, like, like])
-    return f"({alias}.region_name = %s OR {alias}.province = %s OR {alias}.region_name LIKE %s OR {alias}.province LIKE %s)"
+    clauses = []
+    for keyword in candidates:
+        like = f"%{keyword}%"
+        clauses.append(f"({alias}.region_name = %s OR {alias}.province = %s OR {alias}.region_name LIKE %s OR {alias}.province LIKE %s)")
+        params.extend([keyword, keyword, like, like])
+    return "(" + " OR ".join(clauses) + ")"
 
 
 def region_where_sql(alias: str, region_keyword: str | None, params: list[Any]) -> str:
@@ -532,6 +596,8 @@ def get_region_id_for_keyword(region_keyword: str | None) -> int | None:
     clause = region_match_sql("r", region_keyword, params)
     if not clause:
         return None
+    candidates = region_keyword_candidates(region_keyword)
+    placeholders = ", ".join(["%s"] * len(candidates))
     row = fetch_one(
         f"""
         SELECT r.region_id
@@ -539,14 +605,14 @@ def get_region_id_for_keyword(region_keyword: str | None) -> int | None:
         WHERE {clause}
         ORDER BY
           CASE
-            WHEN r.region_name = %s THEN 0
-            WHEN r.province = %s AND (r.tour_sigungu_code IS NULL OR r.tour_sigungu_code = '') THEN 1
+            WHEN r.region_name IN ({placeholders}) THEN 0
+            WHEN r.province IN ({placeholders}) AND (r.tour_sigungu_code IS NULL OR r.tour_sigungu_code = '') THEN 1
             ELSE 2
           END,
           r.region_id
         LIMIT 1
         """,
-        (*params, normalize_region_keyword(region_keyword), normalize_region_keyword(region_keyword)),
+        (*params, *candidates, *candidates),
     )
     return int(row["region_id"]) if row else None
 

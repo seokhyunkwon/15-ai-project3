@@ -31,8 +31,7 @@ st.set_page_config(
 )
 
 
-KOREA_REGIONS = [
-    "전국",
+MAJOR_REGION_ORDER = [
     "서울",
     "부산",
     "대구",
@@ -40,18 +39,16 @@ KOREA_REGIONS = [
     "광주",
     "대전",
     "울산",
-    "세종",
-    "경기",
-    "강원",
-    "충북",
-    "충남",
-    "전북",
-    "전남",
-    "경북",
-    "경남",
-    "제주",
-    "경주",
-    "강릉",
+    "세종특별자치시",
+    "경기도",
+    "강원특별자치도",
+    "충청북도",
+    "충청남도",
+    "전북특별자치도",
+    "전라남도",
+    "경상북도",
+    "경상남도",
+    "제주특별자치도",
 ]
 
 REGION_FALLBACK_CENTERS = {
@@ -75,6 +72,16 @@ REGION_FALLBACK_CENTERS = {
     "제주": {"region_name": "제주", "latitude": 33.4996, "longitude": 126.5312},
     "경주": {"region_name": "경주", "latitude": 35.8562, "longitude": 129.2247},
     "강릉": {"region_name": "강릉", "latitude": 37.7519, "longitude": 128.8761},
+    "세종특별자치시": {"region_name": "세종특별자치시", "latitude": 36.4800, "longitude": 127.2890},
+    "경기도": {"region_name": "경기도", "latitude": 37.4138, "longitude": 127.5183},
+    "강원특별자치도": {"region_name": "강원특별자치도", "latitude": 37.8228, "longitude": 128.1555},
+    "충청북도": {"region_name": "충청북도", "latitude": 36.6357, "longitude": 127.4917},
+    "충청남도": {"region_name": "충청남도", "latitude": 36.6588, "longitude": 126.6728},
+    "전북특별자치도": {"region_name": "전북특별자치도", "latitude": 35.7175, "longitude": 127.1530},
+    "전라남도": {"region_name": "전라남도", "latitude": 34.8679, "longitude": 126.9910},
+    "경상북도": {"region_name": "경상북도", "latitude": 36.4919, "longitude": 128.8889},
+    "경상남도": {"region_name": "경상남도", "latitude": 35.4606, "longitude": 128.2132},
+    "제주특별자치도": {"region_name": "제주특별자치도", "latitude": 33.4996, "longitude": 126.5312},
 }
 
 
@@ -193,7 +200,8 @@ def inject_design() -> None:
             box-shadow: 0 16px 38px rgba(17,24,39,0.04);
           }
 
-          div[data-testid="stForm"] {
+          div[data-testid="stForm"],
+          div[data-testid="stVerticalBlockBorderWrapper"]:has(#trip-search-panel) {
             max-width: min(92vw, 1180px);
             margin: -116px auto 44px !important;
             padding: 24px 26px 28px !important;
@@ -205,7 +213,8 @@ def inject_design() -> None:
             z-index: 4;
           }
 
-          div[data-testid="stForm"] label {
+          div[data-testid="stForm"] label,
+          div[data-testid="stVerticalBlockBorderWrapper"]:has(#trip-search-panel) label {
             color: var(--gray-700) !important;
             font-weight: 600 !important;
           }
@@ -434,7 +443,8 @@ def inject_design() -> None:
             .hero-nav { padding: 20px 22px; }
             .hero-content { margin-top: -190px; }
             .nav-auth { gap: 12px; font-size: 0.86rem; }
-            div[data-testid="stForm"] {
+            div[data-testid="stForm"],
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(#trip-search-panel) {
               margin: -82px 16px 34px !important;
               padding: 20px !important;
             }
@@ -691,8 +701,8 @@ def course_item_with_image(item: dict[str, Any], places_by_id: dict[int, dict[st
 
 def render_login_dialog() -> None:
     st.write("여행지 검색과 추천 코스 기능은 로그인 후 이용할 수 있습니다.")
-    username = st.text_input("아이디", value="demo", key="login_username")
-    password = st.text_input("비밀번호", value="demo1234", type="password", key="login_password")
+    username = st.text_input("아이디", value="", key="login_username")
+    password = st.text_input("비밀번호", value="", type="password", key="login_password")
     cols = st.columns([1, 1])
     if cols[0].button("로그인", type="primary", use_container_width=True, key="login_submit"):
         user = db.authenticate(username, password)
@@ -702,26 +712,24 @@ def render_login_dialog() -> None:
         st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
     if cols[1].button("닫기", use_container_width=True, key="login_close"):
         close_auth_modal()
-    st.caption("데모 계정: demo / demo1234")
 
 
 def render_signup_dialog() -> None:
     st.write("회원가입 후 여행 조건에 맞는 추천 결과를 확인할 수 있습니다.")
-    regions = db.get_regions()
-    options = {f"{row['region_name']} ({row['province']})": row["region_id"] for row in regions}
     cols = st.columns(2)
     new_username = cols[0].text_input("아이디", key="signup_username")
     name = cols[1].text_input("이름", key="signup_name")
-    email = cols[0].text_input("이메일", key="signup_email")
-    new_password = cols[1].text_input("비밀번호", type="password", key="signup_password")
-    selected_region = st.selectbox("관심 지역", list(options.keys()) or ["전국"], key="signup_region")
+    new_password = st.text_input("비밀번호", type="password", key="signup_password")
     btn_cols = st.columns([1, 1])
     if btn_cols[0].button("회원가입", type="primary", use_container_width=True, key="signup_submit"):
-        if not all([new_username, name, email, new_password]):
+        clean_username = str(new_username or "").strip()
+        clean_name = str(name or "").strip()
+        if not all([clean_username, clean_name, new_password]):
             st.warning("모든 항목을 입력해주세요.")
             return
         try:
-            db.create_member(new_username, new_password, name, email, options.get(selected_region))
+            local_email = f"{clean_username}@traveldb.local"[:120]
+            db.create_member(clean_username, new_password, clean_name, local_email, None)
             st.success("회원가입이 완료되었습니다. 이제 로그인해주세요.")
         except Error as exc:
             st.error(f"회원가입 실패: {exc}")
@@ -762,19 +770,11 @@ def render_login_required() -> None:
         <div class="section-shell">
           <div class="section-kicker">LOGIN REQUIRED</div>
           <h2 class="section-title">로그인 후 이용할 수 있습니다</h2>
-          <p>여행지 검색, 추천 코스, 숙소/식당 추천, 찜하기 기능은 로그인한 회원에게만 제공됩니다.</p>
+          <p>여행지 검색, 추천 코스, 숙소/식당 추천, 찜하기 기능은 로그인한 회원에게만 제공됩니다. 로그인과 회원가입은 화면 우측 상단에서 할 수 있습니다.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    with st.container(border=True):
-        st.info("상단의 로그인/회원가입 링크가 새 창으로 열리는 환경을 대비해 아래 버튼으로도 이동할 수 있게 했습니다.")
-        cols = st.columns([1, 1, 3])
-        if cols[0].button("로그인", type="primary", use_container_width=True, key="gate_login_button"):
-            go_auth("login")
-        if cols[1].button("회원가입", use_container_width=True, key="gate_signup_button"):
-            go_auth("signup")
-        cols[2].caption("데모 계정: demo / demo1234")
 
 
 def render_hero() -> None:
@@ -851,27 +851,132 @@ def style_from_categories(categories: list[str]) -> str:
     return "관광지 위주"
 
 
+def _region_code(row: dict[str, Any], key: str) -> str:
+    return str(row.get(key) or "").strip()
+
+
+def _minor_region_label(region_name: str, major_name: str, province: str) -> str:
+    for prefix in (major_name, province):
+        prefix = str(prefix or "").strip()
+        if prefix and region_name.startswith(prefix + " "):
+            return region_name[len(prefix) + 1 :].strip() or region_name
+    if major_name == "세종특별자치시" and region_name == "세종특별자치시 세종특별자치시":
+        return "세종특별자치시"
+    return region_name
+
+
+def _fallback_region_hierarchy(rows: list[dict[str, Any]] | None = None) -> dict[str, list[dict[str, str]]]:
+    hierarchy: dict[str, list[dict[str, str]]] = {
+        "전국": [{"label": "전체", "value": "전국", "display": "전국"}]
+    }
+    grouped: dict[str, list[dict[str, str]]] = {region_name: [] for region_name in MAJOR_REGION_ORDER}
+    seen: set[tuple[str, str]] = set()
+
+    for row in rows or []:
+        region_name = str(row.get("region_name") or "").strip()
+        province = str(row.get("province") or "").strip()
+        if not region_name:
+            continue
+        major_name = next(
+            (
+                major
+                for major in MAJOR_REGION_ORDER
+                if region_name == major
+                or province == major
+                or region_name.startswith(major + " ")
+                or province.startswith(major + " ")
+            ),
+            None,
+        )
+        if not major_name or region_name == major_name:
+            continue
+        label = _minor_region_label(region_name, major_name, province)
+        key = (major_name, region_name)
+        if key in seen:
+            continue
+        grouped[major_name].append({"label": label, "value": region_name, "display": region_name})
+        seen.add(key)
+
+    for region_name in MAJOR_REGION_ORDER:
+        hierarchy[region_name] = [{"label": "전체", "value": region_name, "display": f"{region_name} 전체"}]
+        hierarchy[region_name].extend(grouped.get(region_name, []))
+    return hierarchy
+
+
+def region_hierarchy_options() -> dict[str, list[dict[str, str]]]:
+    try:
+        rows = db.get_region_options()
+    except Error:
+        rows = []
+
+    hierarchy: dict[str, list[dict[str, str]]] = {
+        "전국": [{"label": "전체", "value": "전국", "display": "전국"}]
+    }
+    if not rows:
+        return _fallback_region_hierarchy(rows)
+
+    major_rows = [
+        row
+        for row in rows
+        if _region_code(row, "tour_area_code") and not _region_code(row, "tour_sigungu_code")
+    ]
+    child_rows: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        area_code = _region_code(row, "tour_area_code")
+        sigungu_code = _region_code(row, "tour_sigungu_code")
+        if area_code and sigungu_code:
+            child_rows.setdefault(area_code, []).append(row)
+
+    order = {name: index for index, name in enumerate(MAJOR_REGION_ORDER)}
+    major_rows.sort(key=lambda row: order.get(str(row.get("region_name") or ""), 999))
+    if not major_rows:
+        return _fallback_region_hierarchy(rows)
+
+    for major in major_rows:
+        major_name = str(major.get("region_name") or "").strip()
+        area_code = _region_code(major, "tour_area_code")
+        if not major_name:
+            continue
+        options = [{"label": "전체", "value": major_name, "display": f"{major_name} 전체"}]
+        for child in child_rows.get(area_code, []):
+            child_name = str(child.get("region_name") or "").strip()
+            if not child_name:
+                continue
+            label = _minor_region_label(child_name, major_name, str(child.get("province") or ""))
+            options.append({"label": label, "value": child_name, "display": child_name})
+        hierarchy[major_name] = options
+    return hierarchy
+
+
 def render_search_form() -> dict[str, Any] | None:
     if not st.session_state.get("user"):
         return None
 
     default_start = date.today() + timedelta(days=5)
     default_end = default_start + timedelta(days=1)
+    hierarchy = region_hierarchy_options()
+    major_options = list(hierarchy.keys())
 
-    with st.form("trip_search_form"):
-        top = st.columns([1.25, 1, 1, 0.75])
-        destination = top[0].selectbox("어디로 떠나시나요?", KOREA_REGIONS, index=0)
-        start_date = top[1].date_input("출발일", value=default_start)
-        end_date = top[2].date_input("돌아오는 날", value=default_end)
-        adults = top[3].number_input("인원", min_value=1, max_value=10, value=2, step=1)
-
+    with st.container(border=True):
+        st.markdown('<span id="trip-search-panel"></span>', unsafe_allow_html=True)
+        top = st.columns([1.05, 1.15, 0.95, 0.95, 0.65])
+        major_region = top[0].selectbox("대분류 지역", major_options, index=0, key="region_major")
+        minor_options = hierarchy.get(major_region) or [{"label": "전체", "value": major_region, "display": f"{major_region} 전체"}]
+        minor_labels = [option["label"] for option in minor_options]
+        minor_label = top[1].selectbox("소분류 지역", minor_labels, index=0, key=f"region_minor_{major_region}")
+        selected_region = next((option for option in minor_options if option["label"] == minor_label), minor_options[0])
+        destination = selected_region["value"]
+        destination_label = selected_region["display"]
+        start_date = top[2].date_input("출발일", value=default_start)
+        end_date = top[3].date_input("돌아오는 날", value=default_end)
+        adults = top[4].number_input("인원", min_value=1, max_value=10, value=2, step=1)
         categories = st.multiselect(
             "여행 카테고리",
             TRIP_CATEGORIES,
-            default=["관광지", "미식", "카페"],
+            default=[],
             help="주동행인/예산처럼 API에 없는 조건은 제거하고, TourAPI의 콘텐츠 타입·세부 분류 기준으로 추천합니다.",
         )
-        submitted = st.form_submit_button("검색", type="primary", use_container_width=True)
+        submitted = st.button("검색", type="primary", use_container_width=True, key="trip_search_submit")
 
     if not submitted:
         return None
@@ -886,6 +991,9 @@ def render_search_form() -> dict[str, Any] | None:
         "end_date": end_date,
         "adults": adults,
         "categories": categories,
+        "region_major": major_region,
+        "region_minor": minor_label,
+        "destination_label": destination_label,
         "duration_label": duration_from_dates(start_date, end_date),
     }
 
@@ -980,7 +1088,7 @@ def render_summary(result: dict[str, Any]) -> None:
     course = result["course"]
     insights = result.get("api_insights") or {}
     cols = st.columns(4)
-    cols[0].metric("여행지", search["destination"])
+    cols[0].metric("여행지", search.get("destination_label") or search.get("destination") or "전국")
     cols[1].metric("일정", search["duration_label"])
     cols[2].metric("추천 후보", f"{len(places)}곳")
     cols[3].metric("코스 구성", f"{len(course)}개")

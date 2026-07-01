@@ -406,26 +406,24 @@ CREATE TABLE transport_estimates (
 ALTER TABLE members
   ADD CONSTRAINT fk_members_preferred_region FOREIGN KEY (preferred_region_id) REFERENCES regions(region_id);
 
-INSERT INTO regions (region_name, province, description) VALUES
-('서울', '서울특별시', '도심 문화, 야간 명소, 궁궐 여행에 강한 지역'),
-('부산', '부산광역시', '바다, 영화, 시장, 야경 코스가 풍부한 지역'),
-('경주', '경상북도', '역사 유적과 한옥 감성이 강한 지역'),
-('제주', '제주특별자치도', '자연 경관과 드라이브 코스가 풍부한 지역'),
-('강릉', '강원특별자치도', '바다, 커피거리, 자연 휴식 코스가 좋은 지역'),
-('대구', '대구광역시', '도심 미식, 근대골목, 산책 코스가 있는 지역'),
-('인천', '인천광역시', '섬, 항구, 차이나타운, 공항 접근성이 좋은 지역'),
-('광주', '광주광역시', '예술, 역사, 미식 여행에 어울리는 지역'),
-('대전', '대전광역시', '과학, 도심 산책, 근교 자연을 함께 볼 수 있는 지역'),
-('울산', '울산광역시', '해안, 산업관광, 산악 경관이 함께 있는 지역'),
-('세종', '세종특별자치시', '도심 공원과 행정도시 기반의 산책 코스가 있는 지역'),
-('경기', '경기도', '수도권 근교 여행지와 가족형 관광지가 많은 지역'),
-('강원', '강원특별자치도', '산, 바다, 호수, 계절 여행지가 풍부한 지역'),
-('충북', '충청북도', '호수, 산림, 내륙 휴양 코스가 좋은 지역'),
-('충남', '충청남도', '서해안, 온천, 역사 도시가 있는 지역'),
-('전북', '전북특별자치도', '한옥, 미식, 산악 경관이 어울리는 지역'),
-('전남', '전라남도', '섬, 남도 미식, 해안 관광지가 풍부한 지역'),
-('경북', '경상북도', '역사 유산과 전통 문화 여행지가 풍부한 지역'),
-('경남', '경상남도', '남해안, 섬, 역사 도시를 함께 볼 수 있는 지역');
+INSERT INTO regions (region_name, province, description, tour_area_code, tour_sigungu_code, kakao_keyword) VALUES
+('서울', '서울', 'TourAPI 지역 코드 기반 광역 지역입니다. area=1, sigungu=-', '1', NULL, '서울'),
+('인천', '인천', 'TourAPI 지역 코드 기반 광역 지역입니다. area=2, sigungu=-', '2', NULL, '인천'),
+('대전', '대전', 'TourAPI 지역 코드 기반 광역 지역입니다. area=3, sigungu=-', '3', NULL, '대전'),
+('대구', '대구', 'TourAPI 지역 코드 기반 광역 지역입니다. area=4, sigungu=-', '4', NULL, '대구'),
+('광주', '광주', 'TourAPI 지역 코드 기반 광역 지역입니다. area=5, sigungu=-', '5', NULL, '광주'),
+('부산', '부산', 'TourAPI 지역 코드 기반 광역 지역입니다. area=6, sigungu=-', '6', NULL, '부산'),
+('울산', '울산', 'TourAPI 지역 코드 기반 광역 지역입니다. area=7, sigungu=-', '7', NULL, '울산'),
+('세종특별자치시', '세종특별자치시', 'TourAPI 지역 코드 기반 광역 지역입니다. area=8, sigungu=-', '8', NULL, '세종특별자치시'),
+('경기도', '경기도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=31, sigungu=-', '31', NULL, '경기도'),
+('강원특별자치도', '강원특별자치도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=32, sigungu=-', '32', NULL, '강원특별자치도'),
+('충청북도', '충청북도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=33, sigungu=-', '33', NULL, '충청북도'),
+('충청남도', '충청남도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=34, sigungu=-', '34', NULL, '충청남도'),
+('경상북도', '경상북도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=35, sigungu=-', '35', NULL, '경상북도'),
+('경상남도', '경상남도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=36, sigungu=-', '36', NULL, '경상남도'),
+('전북특별자치도', '전북특별자치도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=37, sigungu=-', '37', NULL, '전북특별자치도'),
+('전라남도', '전라남도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=38, sigungu=-', '38', NULL, '전라남도'),
+('제주특별자치도', '제주특별자치도', 'TourAPI 지역 코드 기반 광역 지역입니다. area=39, sigungu=-', '39', NULL, '제주특별자치도');
 
 INSERT INTO categories (category_name, description) VALUES
 ('역사', '궁궐, 유적지, 박물관 중심'),
@@ -440,65 +438,3 @@ INSERT INTO categories (category_name, description) VALUES
 ('실내', '비, 더위, 추위에 대응하기 좋은 실내 장소'),
 ('숙박', '호텔, 펜션, 게스트하우스 등 숙박 시설'),
 ('여행코스', 'TourAPI 여행코스 타입');
-
-INSERT INTO members (username, password_hash, name, email, preferred_region_id, role) VALUES
-('demo', '0ead2060b65992dca4769af601a1b3a35ef38cfad2c2c465bb160ea764157c5d', '데모회원', 'demo@example.com', 3, 'USER'),
-('admin', 'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270', '관리자', 'admin@example.com', 1, 'ADMIN');
-
-INSERT INTO places (region_id, place_name, address, overview, phone, latitude, longitude, source_url, average_rating) VALUES
-(1, '경복궁', '서울 종로구 사직로 161', '조선 왕조의 대표 궁궐로 역사 여행 코스의 중심지입니다.', '02-3700-3900', 37.5796170, 126.9770410, 'https://www.royalpalace.go.kr', 4.70),
-(1, '남산서울타워', '서울 용산구 남산공원길 105', '서울 야경을 한눈에 볼 수 있는 전망 명소입니다.', '02-3455-9277', 37.5511690, 126.9882270, 'https://www.seoultower.co.kr', 4.50),
-(2, '해운대해수욕장', '부산 해운대구 우동', '부산을 대표하는 바다 여행지입니다.', '051-749-7614', 35.1586980, 129.1603840, NULL, 4.60),
-(2, '감천문화마을', '부산 사하구 감내2로 203', '계단식 마을과 벽화가 어우러진 부산의 대표 문화 관광지입니다.', '051-204-1444', 35.0974860, 129.0106680, NULL, 4.40),
-(3, '불국사', '경북 경주시 불국로 385', '신라 불교문화와 세계유산의 가치를 함께 볼 수 있는 명소입니다.', '054-746-9913', 35.7900130, 129.3320180, NULL, 4.80),
-(3, '동궁과 월지', '경북 경주시 원화로 102', '야간 산책과 사진 촬영으로 유명한 경주 대표 명소입니다.', '054-750-8655', 35.8347020, 129.2266320, NULL, 4.70),
-(4, '성산일출봉', '제주 서귀포시 성산읍 성산리', '일출과 화산 지형을 함께 즐길 수 있는 제주 대표 자연 명소입니다.', '064-783-0959', 33.4580560, 126.9425000, NULL, 4.80),
-(4, '협재해수욕장', '제주 제주시 한림읍 협재리', '맑은 바다와 비양도 풍경이 어우러진 해변 명소입니다.', NULL, 33.3948670, 126.2391670, NULL, 4.60),
-(5, '안목해변 커피거리', '강원 강릉시 창해로14번길', '바다를 보며 카페 투어를 즐기기 좋은 강릉 대표 코스입니다.', NULL, 37.7711130, 128.9473910, NULL, 4.50),
-(5, '오죽헌', '강원 강릉시 율곡로3139번길 24', '신사임당과 율곡 이이의 역사적 흔적을 볼 수 있는 명소입니다.', '033-660-3301', 37.7791130, 128.8786740, NULL, 4.40);
-
-INSERT INTO place_categories (place_id, category_id)
-SELECT p.place_id, c.category_id
-FROM places p
-JOIN categories c ON
-  (p.place_name IN ('경복궁', '불국사', '오죽헌') AND c.category_name = '역사')
-  OR (p.place_name IN ('해운대해수욕장', '성산일출봉', '협재해수욕장', '안목해변 커피거리') AND c.category_name = '자연')
-  OR (p.place_name IN ('남산서울타워', '동궁과 월지') AND c.category_name = '야간')
-  OR (p.place_name IN ('안목해변 커피거리', '감천문화마을') AND c.category_name = '미식')
-  OR (p.place_name IN ('경복궁', '불국사', '성산일출봉') AND c.category_name = '가족');
-
-INSERT INTO festivals (region_id, place_id, festival_name, start_date, end_date, fee_info, homepage, overview, source_url) VALUES
-(1, NULL, '서울빛초롱축제', '2026-12-01', '2026-12-31', '무료', 'https://www.stolantern.com', '서울 도심 야간 관광과 어울리는 겨울 빛 축제입니다.', NULL),
-(2, NULL, '부산불꽃축제', '2026-11-07', '2026-11-07', '일부 유료', 'https://www.bfo.or.kr', '광안리 일대에서 열리는 부산 대표 야간 축제입니다.', NULL),
-(3, NULL, '경주 벚꽃축제', '2027-03-27', '2027-04-05', '무료', NULL, '경주의 역사 유적과 봄꽃을 함께 즐길 수 있는 계절 축제입니다.', NULL),
-(4, NULL, '제주 들불축제', '2027-03-01', '2027-03-03', '무료', NULL, '제주의 자연과 전통문화를 체험하는 대표 축제입니다.', NULL),
-(5, NULL, '강릉 커피축제', '2026-10-10', '2026-10-13', '무료', NULL, '커피 도시 강릉의 카페와 로컬 문화를 즐길 수 있는 축제입니다.', NULL);
-
-INSERT INTO accommodations (region_id, accommodation_name, address, phone) VALUES
-(1, '종로 시티스테이', '서울 종로구', '02-0000-1000'),
-(2, '해운대 오션호텔', '부산 해운대구', '051-000-2000'),
-(3, '경주 한옥스테이', '경북 경주시', '054-000-3000'),
-(4, '제주 바람스테이', '제주 제주시', '064-000-4000'),
-(5, '강릉 커피펜션', '강원 강릉시', '033-000-5000');
-
-INSERT INTO restaurants (region_id, restaurant_name, food_type, address) VALUES
-(1, '서촌 한식당', '한식', '서울 종로구'),
-(2, '해운대 밀면집', '밀면', '부산 해운대구'),
-(3, '경주 쌈밥거리', '한식', '경북 경주시'),
-(4, '제주 흑돼지거리', '흑돼지', '제주 제주시'),
-(5, '안목 커피로스터스', '카페', '강원 강릉시');
-
-INSERT INTO favorites (member_id, place_id)
-SELECT m.member_id, p.place_id
-FROM members m
-JOIN places p ON p.place_name IN ('불국사', '동궁과 월지')
-WHERE m.username = 'demo';
-
-INSERT INTO reviews (member_id, place_id, rating, content)
-SELECT m.member_id, p.place_id, 5, '야간 코스로 넣기 좋고 발표용 샘플 데이터로도 보기 좋습니다.'
-FROM members m
-JOIN places p ON p.place_name = '동궁과 월지'
-WHERE m.username = 'demo';
-
-INSERT INTO crawl_logs (source_name, source_url, status, inserted_count, message) VALUES
-('seed', 'schema.sql', 'SUCCESS', 10, '초기 샘플 관광지와 축제 데이터를 삽입했습니다.');
