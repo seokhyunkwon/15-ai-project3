@@ -230,6 +230,11 @@ def inject_design() -> None:
             font-weight: 500;
           }
 
+          .stButton > button *,
+          .stDownloadButton > button * {
+            color: inherit !important;
+          }
+
           .stButton > button:hover,
           .stDownloadButton > button:hover {
             border-color: var(--ink);
@@ -239,7 +244,7 @@ def inject_design() -> None:
           .stButton > button[kind="primary"] {
             background: var(--ink);
             border-color: var(--ink);
-            color: #fff;
+            color: #fff !important;
           }
 
           .hero-shell {
@@ -436,6 +441,86 @@ def inject_design() -> None:
             color: #9a3412;
             font-weight: 700;
             font-size: 0.78rem;
+          }
+
+          .weather-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 14px;
+            margin-top: 12px;
+          }
+
+          .weather-card {
+            min-height: 210px;
+            padding: 16px;
+            border: 1px solid var(--gray-200);
+            border-top: 3px solid #0ea5e9;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 16px 34px rgba(15,23,42,0.06);
+          }
+
+          .weather-card.error {
+            border-top-color: #ef4444;
+            background: #fffafa;
+          }
+
+          .weather-date {
+            color: var(--gray-900);
+            font-size: 0.98rem;
+            font-weight: 700;
+          }
+
+          .weather-source {
+            margin-top: 2px;
+            color: var(--gray-500);
+            font-size: 0.78rem;
+          }
+
+          .weather-condition {
+            margin-top: 18px;
+            color: var(--ink);
+            font-size: 1.28rem;
+            font-weight: 800;
+          }
+
+          .weather-temp {
+            margin-top: 4px;
+            color: #0369a1;
+            font-size: 2rem;
+            font-weight: 800;
+          }
+
+          .weather-stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 14px;
+          }
+
+          .weather-stat {
+            padding: 8px 9px;
+            border-radius: 10px;
+            background: #f8fafc;
+          }
+
+          .weather-stat span {
+            display: block;
+            color: var(--gray-500);
+            font-size: 0.72rem;
+          }
+
+          .weather-stat strong {
+            display: block;
+            margin-top: 2px;
+            color: var(--gray-900);
+            font-size: 0.92rem;
+          }
+
+          .weather-error-text {
+            margin-top: 18px;
+            color: #991b1b;
+            font-weight: 700;
           }
 
           @media (max-width: 767px) {
@@ -1125,7 +1210,113 @@ def _money(value: Any) -> str:
         return "-"
 
 
+WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _coerce_date(value: Any, fallback: date) -> date:
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except Exception:
+        return fallback
+
+
+def trip_dates(start_value: Any, end_value: Any) -> list[date]:
+    start = _coerce_date(start_value, date.today())
+    end = _coerce_date(end_value, start)
+    if end < start:
+        end = start
+    return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
+
+
+def weather_meta_key(destination: str, center: dict[str, Any], dates: list[date]) -> dict[str, str]:
+    first = dates[0] if dates else date.today()
+    last = dates[-1] if dates else first
+    return {
+        "destination": str(destination or "전국"),
+        "center": str(center.get("region_name") or ""),
+        "latitude": str(center.get("latitude") or ""),
+        "longitude": str(center.get("longitude") or ""),
+        "start": first.isoformat(),
+        "end": last.isoformat(),
+    }
+
+
+def _weather_number(value: Any, suffix: str = "") -> str:
+    if value is None or value == "":
+        return "-"
+    try:
+        number = float(value)
+        text = str(int(number)) if number.is_integer() else f"{number:.1f}"
+    except Exception:
+        text = str(value)
+    return f"{text}{suffix}"
+
+
+def _weather_day_label(target: date, first_day: date) -> str:
+    index = (target - first_day).days + 1
+    weekday = WEEKDAY_LABELS[target.weekday()]
+    return f"{index}일차 · {target.month}.{target.day}({weekday})"
+
+
+def weather_card_html(entry: dict[str, Any], first_day: date) -> str:
+    target = _coerce_date(entry.get("target_date"), first_day)
+    title = html.escape(_weather_day_label(target, first_day))
+    subtitle = html.escape(target.isoformat())
+    error = entry.get("error")
+    if error:
+        error_text = html.escape(str(error))
+        return (
+            '<div class="weather-card error">'
+            f'<div class="weather-date">{title}</div>'
+            f'<div class="weather-source">{subtitle}</div>'
+            '<div class="weather-error-text">조회 실패</div>'
+            f'<div class="weather-source">{error_text}</div>'
+            "</div>"
+        )
+
+    weather = entry.get("weather") or {}
+    condition = html.escape(str(weather.get("condition") or "정보 없음"))
+    provider = html.escape(str(weather.get("provider") or weather.get("source") or "기상청"))
+    temp = html.escape(_weather_number(weather.get("temp"), "℃"))
+    min_temp = html.escape(_weather_number(weather.get("min_temp"), "℃"))
+    max_temp = html.escape(_weather_number(weather.get("max_temp"), "℃"))
+    rain = html.escape(_weather_number(weather.get("precip_probability"), "%"))
+    return (
+        '<div class="weather-card">'
+        f'<div class="weather-date">{title}</div>'
+        f'<div class="weather-source">{subtitle} · {provider}</div>'
+        f'<div class="weather-condition">{condition}</div>'
+        f'<div class="weather-temp">{temp}</div>'
+        '<div class="weather-stats">'
+        f'<div class="weather-stat"><span>최저 / 최고</span><strong>{min_temp} / {max_temp}</strong></div>'
+        f'<div class="weather-stat"><span>강수확률</span><strong>{rain}</strong></div>'
+        "</div>"
+        "</div>"
+    )
+
+
+def render_weather_cards(entries: list[dict[str, Any]], first_day: date) -> None:
+    cards = "".join(weather_card_html(entry, first_day) for entry in entries)
+    st.markdown(f'<div class="weather-grid">{cards}</div>', unsafe_allow_html=True)
+    notes = [
+        str((entry.get("weather") or {}).get("note") or "")
+        for entry in entries
+        if (entry.get("weather") or {}).get("note")
+    ]
+    if notes:
+        with st.expander("예보 기준 자세히 보기"):
+            for note in dict.fromkeys(notes):
+                st.caption(note)
+
+
 def weather_center_for_region(destination: str) -> dict[str, Any] | None:
+    text = str(destination or "전국")
+    for keyword, fallback in REGION_FALLBACK_CENTERS.items():
+        if keyword == text or text == f"{keyword} 전체":
+            return dict(fallback)
+
     try:
         center = db.region_center(destination)
     except Error:
@@ -1133,7 +1324,6 @@ def weather_center_for_region(destination: str) -> dict[str, Any] | None:
     if center and center.get("latitude") and center.get("longitude"):
         return center
 
-    text = str(destination or "전국")
     for keyword, fallback in REGION_FALLBACK_CENTERS.items():
         if keyword == text or keyword in text or text in keyword:
             return dict(fallback)
@@ -1178,6 +1368,7 @@ def render_live_api_tabs(result: dict[str, Any]) -> None:
     search = result.get("search") or {}
     destination = str(search.get("destination") or "전국")
     start_date = search.get("start_date") or date.today()
+    end_date = search.get("end_date") or start_date
     adults = int(search.get("adults") or 1)
 
     section_header("LIVE API", "실시간 API 보강", "카카오맵, 기상청 단기/중기예보, GPT API 키가 있으면 실시간 장소·날씨·교통비 추정까지 확인합니다.")
@@ -1224,41 +1415,46 @@ def render_live_api_tabs(result: dict[str, Any]) -> None:
         if not center:
             st.info("날씨 조회에 사용할 지역 좌표를 찾지 못했습니다.")
         else:
-            st.caption(f"조회 기준 좌표: {center.get('region_name')} · {center.get('latitude')} / {center.get('longitude')}")
-            if st.button("선택 날짜 날씨 조회", type="primary", key="weather_live_search"):
-                try:
-                    weather = external_services.weather_for_date(float(center["latitude"]), float(center["longitude"]), start_date, region_name=str(center.get("region_name") or destination))
-                    try:
-                        db.save_weather_snapshot(str(center.get("region_name") or destination), start_date, center.get("latitude"), center.get("longitude"), weather)
-                    except Error:
-                        pass
-                    st.session_state["weather_live_result"] = weather
-                except Exception as exc:
-                    st.error(f"날씨 조회 실패: {exc}")
-            weather = st.session_state.get("weather_live_result")
-            if weather:
-                cols = st.columns(4)
-                cols[0].metric("예보 출처", weather.get("provider") or weather.get("source") or "기상청")
-                cols[1].metric("날씨", weather.get("condition") or "정보 없음")
-                temp_text = "-" if weather.get("temp") is None else f"{weather.get('temp')}℃"
-                cols[2].metric("대표 기온", temp_text)
-                rain_text = "-" if weather.get("precip_probability") is None else f"{weather.get('precip_probability')}%"
-                cols[3].metric("강수확률", rain_text)
+            weather_days = trip_dates(start_date, end_date)
+            first_day = weather_days[0]
+            last_day = weather_days[-1]
+            meta = weather_meta_key(destination, center, weather_days)
+            st.caption(
+                f"조회 기준 좌표: {center.get('region_name')} · {center.get('latitude')} / {center.get('longitude')} · "
+                f"일정 {first_day.isoformat()} ~ {last_day.isoformat()} ({len(weather_days)}일)"
+            )
+            if len(weather_days) > 10:
+                st.caption("기상청 예보 제공 범위 밖 날짜는 카드에 실패 사유로 표시됩니다.")
+            if st.button(f"전체 일정 날씨 조회 ({len(weather_days)}일)", type="primary", key="weather_live_search"):
+                weather_entries: list[dict[str, Any]] = []
+                with st.spinner("날짜별 날씨를 불러오는 중입니다..."):
+                    for target_day in weather_days:
+                        try:
+                            weather = external_services.weather_for_date(
+                                float(center["latitude"]),
+                                float(center["longitude"]),
+                                target_day,
+                                region_name=str(center.get("region_name") or destination),
+                            )
+                            try:
+                                db.save_weather_snapshot(str(center.get("region_name") or destination), target_day, center.get("latitude"), center.get("longitude"), weather)
+                            except Error:
+                                pass
+                            weather_entries.append({"target_date": target_day.isoformat(), "weather": weather})
+                        except Exception as exc:
+                            weather_entries.append({"target_date": target_day.isoformat(), "error": str(exc)})
+                st.session_state["weather_live_results"] = {"meta": meta, "items": weather_entries}
 
-                detail_cols = st.columns(4)
-                min_text = "-" if weather.get("min_temp") is None else f"{weather.get('min_temp')}℃"
-                max_text = "-" if weather.get("max_temp") is None else f"{weather.get('max_temp')}℃"
-                humidity_text = "-" if weather.get("humidity") is None else f"{weather.get('humidity')}%"
-                wind_text = "-" if weather.get("wind_speed") is None else f"{weather.get('wind_speed')}m/s"
-                detail_cols[0].metric("최저", min_text)
-                detail_cols[1].metric("최고", max_text)
-                detail_cols[2].metric("습도", humidity_text)
-                detail_cols[3].metric("풍속", wind_text)
-                if weather.get("note"):
-                    st.caption(weather["note"])
+            weather_state = st.session_state.get("weather_live_results")
+            weather_entries = []
+            if isinstance(weather_state, dict) and weather_state.get("meta") == meta:
+                weather_entries = list(weather_state.get("items") or [])
+
+            if weather_entries:
+                render_weather_cards(weather_entries, first_day)
             else:
                 if api_status.get("kma_short") or api_status.get("kma_mid"):
-                    st.info("기상청 키는 감지됐습니다. 선택 날짜 날씨 조회 버튼을 누르면 오늘~3일 뒤는 단기예보, 4~10일 뒤는 중기예보를 사용합니다.")
+                    st.info("기상청 키는 감지됐습니다. 전체 일정 날씨 조회 버튼을 누르면 오늘~3일 뒤는 단기예보, 4~10일 뒤는 중기예보를 날짜별로 사용합니다.")
                 else:
                     st.info("KMA_SHORT_FORECAST_SERVICE_KEY와 KMA_MID_FORECAST_SERVICE_KEY가 감지되지 않았습니다. secrets.toml 최상위 또는 [api] 섹션에 넣어주세요.")
 
