@@ -29,6 +29,10 @@ def place_text(place: dict[str, Any]) -> str:
     )
 
 
+def has_image(place: dict[str, Any]) -> bool:
+    return any(safe_text(place.get(key)) for key in ("image_path", "image_url", "image_original_url"))
+
+
 def slot_keywords(slot: str) -> list[str]:
     for key, keywords in SLOT_KEYWORDS.items():
         if key in slot:
@@ -52,7 +56,9 @@ def pick_place(
             keyword_matches.append(place)
         else:
             fallback.append(place)
-    return (keyword_matches or fallback or [None])[0]
+    candidates = keyword_matches or fallback
+    image_candidates = [place for place in candidates if has_image(place)]
+    return (image_candidates or candidates or [None])[0]
 
 
 def generate_course(scored_places: list[dict[str, Any]], duration: str) -> list[dict[str, Any]]:
@@ -75,7 +81,17 @@ def generate_course(scored_places: list[dict[str, Any]], duration: str) -> list[
                 "category": safe_text(place.get("categories"), "-"),
                 "address": safe_text(place.get("address"), "주소 정보 없음"),
                 "recommendation_score": place.get("recommendation_score", 0),
+                "recommendation_reasons": reasons,
+                "recommendation_breakdown": place.get("recommendation_breakdown") or [],
                 "reason": reasons[0],
+                "image_path": place.get("image_path"),
+                "image_url": place.get("image_url"),
+                "image_original_url": place.get("image_original_url"),
+                "source_url": place.get("source_url"),
+                "average_rating": place.get("average_rating"),
+                "review_count": place.get("review_count"),
+                "latitude": place.get("latitude"),
+                "longitude": place.get("longitude"),
             }
         )
     return course

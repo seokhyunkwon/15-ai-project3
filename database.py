@@ -10,12 +10,47 @@ from mysql.connector import Error
 
 RECOMMENDATION_PLACE_COLUMNS = {
     "image_url": "ALTER TABLE places ADD COLUMN image_url VARCHAR(500) NULL",
+    "image_path": "ALTER TABLE places ADD COLUMN image_path VARCHAR(500) NULL",
+    "image_original_url": "ALTER TABLE places ADD COLUMN image_original_url VARCHAR(1000) NULL",
+    "image_saved_at": "ALTER TABLE places ADD COLUMN image_saved_at DATETIME NULL",
     "tags": "ALTER TABLE places ADD COLUMN tags VARCHAR(500) NULL",
-    "indoor_outdoor": "ALTER TABLE places ADD COLUMN indoor_outdoor ENUM('실내', '야외', '혼합') NULL",
-    "recommended_for": "ALTER TABLE places ADD COLUMN recommended_for VARCHAR(255) NULL",
-    "budget_level": "ALTER TABLE places ADD COLUMN budget_level ENUM('저렴', '보통', '비쌈') NULL",
     "opening_hours": "ALTER TABLE places ADD COLUMN opening_hours VARCHAR(255) NULL",
     "source_api": "ALTER TABLE places ADD COLUMN source_api VARCHAR(80) NULL",
+    "content_type_id": "ALTER TABLE places ADD COLUMN content_type_id VARCHAR(20) NULL",
+    "content_type_name": "ALTER TABLE places ADD COLUMN content_type_name VARCHAR(80) NULL",
+    "cat1": "ALTER TABLE places ADD COLUMN cat1 VARCHAR(80) NULL",
+    "cat2": "ALTER TABLE places ADD COLUMN cat2 VARCHAR(80) NULL",
+    "cat3": "ALTER TABLE places ADD COLUMN cat3 VARCHAR(80) NULL",
+    "lcls_systm1": "ALTER TABLE places ADD COLUMN lcls_systm1 VARCHAR(100) NULL",
+    "lcls_systm2": "ALTER TABLE places ADD COLUMN lcls_systm2 VARCHAR(100) NULL",
+    "lcls_systm3": "ALTER TABLE places ADD COLUMN lcls_systm3 VARCHAR(100) NULL",
+    "use_fee": "ALTER TABLE places ADD COLUMN use_fee VARCHAR(500) NULL",
+    "parking_fee": "ALTER TABLE places ADD COLUMN parking_fee VARCHAR(255) NULL",
+    "has_tour_image": "ALTER TABLE places ADD COLUMN has_tour_image BOOLEAN NOT NULL DEFAULT FALSE",
+    "photo_priority_score": "ALTER TABLE places ADD COLUMN photo_priority_score DECIMAL(8, 2) NOT NULL DEFAULT 0",
+    "detail_common_json": "ALTER TABLE places ADD COLUMN detail_common_json LONGTEXT NULL",
+    "detail_intro_json": "ALTER TABLE places ADD COLUMN detail_intro_json LONGTEXT NULL",
+    "detail_info_json": "ALTER TABLE places ADD COLUMN detail_info_json LONGTEXT NULL",
+    "tour_api_updated_at": "ALTER TABLE places ADD COLUMN tour_api_updated_at DATETIME NULL",
+}
+
+
+MEDIA_COLUMNS = {
+    "festivals": {
+        "image_path": "ALTER TABLE festivals ADD COLUMN image_path VARCHAR(500) NULL",
+        "image_original_url": "ALTER TABLE festivals ADD COLUMN image_original_url VARCHAR(1000) NULL",
+        "image_saved_at": "ALTER TABLE festivals ADD COLUMN image_saved_at DATETIME NULL",
+    },
+    "restaurants": {
+        "image_path": "ALTER TABLE restaurants ADD COLUMN image_path VARCHAR(500) NULL",
+        "image_original_url": "ALTER TABLE restaurants ADD COLUMN image_original_url VARCHAR(1000) NULL",
+        "image_saved_at": "ALTER TABLE restaurants ADD COLUMN image_saved_at DATETIME NULL",
+    },
+    "accommodations": {
+        "image_path": "ALTER TABLE accommodations ADD COLUMN image_path VARCHAR(500) NULL",
+        "image_original_url": "ALTER TABLE accommodations ADD COLUMN image_original_url VARCHAR(1000) NULL",
+        "image_saved_at": "ALTER TABLE accommodations ADD COLUMN image_saved_at DATETIME NULL",
+    },
 }
 
 
@@ -129,6 +164,56 @@ ADVANCED_API_TABLES = {
           INDEX idx_regional_demand_group (metric_group)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
+    "live_kakao_places": """
+        CREATE TABLE IF NOT EXISTS live_kakao_places (
+          kakao_place_id VARCHAR(80) PRIMARY KEY,
+          region_name VARCHAR(80) NULL,
+          keyword VARCHAR(120) NULL,
+          place_name VARCHAR(180) NOT NULL,
+          category_name VARCHAR(255) NULL,
+          address_name VARCHAR(255) NULL,
+          road_address_name VARCHAR(255) NULL,
+          phone VARCHAR(80) NULL,
+          place_url VARCHAR(500) NULL,
+          latitude DECIMAL(10, 7) NULL,
+          longitude DECIMAL(10, 7) NULL,
+          raw_json LONGTEXT NULL,
+          fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_live_kakao_region (region_name),
+          INDEX idx_live_kakao_keyword (keyword)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "weather_cache": """
+        CREATE TABLE IF NOT EXISTS weather_cache (
+          weather_id INT AUTO_INCREMENT PRIMARY KEY,
+          region_name VARCHAR(80) NULL,
+          target_date DATE NULL,
+          latitude DECIMAL(10, 7) NULL,
+          longitude DECIMAL(10, 7) NULL,
+          weather_source VARCHAR(40) NULL,
+          condition_text VARCHAR(120) NULL,
+          temp DECIMAL(6, 2) NULL,
+          feels_like DECIMAL(6, 2) NULL,
+          humidity DECIMAL(6, 2) NULL,
+          wind_speed DECIMAL(6, 2) NULL,
+          raw_json LONGTEXT NULL,
+          fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_weather_region_date (region_name, target_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "transport_estimates": """
+        CREATE TABLE IF NOT EXISTS transport_estimates (
+          estimate_id INT AUTO_INCREMENT PRIMARY KEY,
+          origin_text VARCHAR(180) NOT NULL,
+          destination_text VARCHAR(180) NOT NULL,
+          travel_date DATE NULL,
+          people INT NOT NULL DEFAULT 1,
+          provider VARCHAR(40) NOT NULL DEFAULT 'openai',
+          estimate_json LONGTEXT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_transport_route (origin_text, destination_text, travel_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """
 }
 
 
@@ -228,6 +313,17 @@ def place_optional_selects(alias: str = "p") -> list[str]:
     return selects
 
 
+def media_optional_selects(table_name: str, alias: str) -> list[str]:
+    columns = get_table_columns(table_name)
+    selects: list[str] = []
+    for column in ("image_path", "image_original_url", "image_saved_at"):
+        if column in columns:
+            selects.append(f"{alias}.{column}")
+        else:
+            selects.append(f"NULL AS {column}")
+    return selects
+
+
 def ensure_recommendation_schema() -> list[str]:
     existing = get_table_columns("places")
     results: list[str] = []
@@ -240,6 +336,23 @@ def ensure_recommendation_schema() -> list[str]:
             results.append(f"{column}: added")
         except Error as exc:
             results.append(f"{column}: skipped ({exc})")
+    return results
+
+
+def ensure_media_schema() -> list[str]:
+    """숙소/식당/축제 이미지 컬럼이 없는 기존 DB도 화면에서 바로 쓸 수 있게 보강한다."""
+    results: list[str] = []
+    for table_name, columns in MEDIA_COLUMNS.items():
+        existing = get_table_columns(table_name)
+        for column, sql in columns.items():
+            if column in existing:
+                results.append(f"{table_name}.{column}: already exists")
+                continue
+            try:
+                execute(sql)
+                results.append(f"{table_name}.{column}: added")
+            except Error as exc:
+                results.append(f"{table_name}.{column}: skipped ({exc})")
     return results
 
 
@@ -315,6 +428,17 @@ def get_member_by_username(username: str) -> dict[str, Any] | None:
     )
 
 
+def get_member_by_id(member_id: int) -> dict[str, Any] | None:
+    return fetch_one(
+        """
+        SELECT member_id, username, name, email, role, preferred_region_id
+        FROM members
+        WHERE member_id = %s
+        """,
+        (member_id,),
+    )
+
+
 def create_member(username: str, password: str, name: str, email: str, preferred_region_id: int | None) -> int:
     return execute(
         """
@@ -327,6 +451,32 @@ def create_member(username: str, password: str, name: str, email: str, preferred
 
 def get_regions() -> list[dict[str, Any]]:
     return fetch_all("SELECT region_id, region_name, province, description FROM regions ORDER BY region_name")
+
+
+def get_region_options() -> list[dict[str, Any]]:
+    columns = get_table_columns("regions")
+    optional_columns = []
+    for column in ("tour_area_code", "tour_sigungu_code", "kakao_keyword"):
+        optional_columns.append(column if column in columns else f"NULL AS {column}")
+    return fetch_all(
+        f"""
+        SELECT
+          region_id,
+          region_name,
+          province,
+          description,
+          {", ".join(optional_columns)}
+        FROM regions
+        ORDER BY
+          CASE WHEN tour_area_code REGEXP '^[0-9]+$' THEN CAST(tour_area_code AS UNSIGNED) ELSE 999 END,
+          CASE
+            WHEN tour_sigungu_code IS NULL OR tour_sigungu_code = '' THEN 0
+            WHEN tour_sigungu_code REGEXP '^[0-9]+$' THEN CAST(tour_sigungu_code AS UNSIGNED)
+            ELSE 999
+          END,
+          region_name
+        """
+    )
 
 
 def ensure_region(region_name: str, province: str | None = None, description: str | None = None) -> int:
@@ -351,6 +501,120 @@ def ensure_region(region_name: str, province: str | None = None, description: st
 
 def get_categories() -> list[dict[str, Any]]:
     return fetch_all("SELECT category_id, category_name, description FROM categories ORDER BY category_name")
+
+
+def normalize_region_keyword(region_keyword: str | None) -> str:
+    """사용자 입력 지역명을 검색용으로 정리한다."""
+    if not region_keyword:
+        return "전국"
+    keyword = str(region_keyword).strip()
+    aliases = {
+        "서울특별시": "서울",
+        "부산광역시": "부산",
+        "대구광역시": "대구",
+        "인천광역시": "인천",
+        "광주광역시": "광주",
+        "대전광역시": "대전",
+        "울산광역시": "울산",
+        "세종특별자치시": "세종",
+        "경기도": "경기",
+        "강원도": "강원",
+        "강원특별자치도": "강원",
+        "충청북도": "충북",
+        "충청남도": "충남",
+        "전라북도": "전북",
+        "전북특별자치도": "전북",
+        "전라남도": "전남",
+        "경상북도": "경북",
+        "경상남도": "경남",
+        "제주특별자치도": "제주",
+    }
+    return aliases.get(keyword, keyword)
+
+
+def region_keyword_candidates(region_keyword: str | None) -> list[str]:
+    if not region_keyword:
+        return ["전국"]
+    keyword = str(region_keyword).strip()
+    if keyword.endswith(" 전체"):
+        keyword = keyword[:-3].strip()
+    alias_pairs = {
+        "서울": "서울특별시",
+        "부산": "부산광역시",
+        "대구": "대구광역시",
+        "인천": "인천광역시",
+        "광주": "광주광역시",
+        "대전": "대전광역시",
+        "울산": "울산광역시",
+        "세종": "세종특별자치시",
+        "경기": "경기도",
+        "강원": "강원특별자치도",
+        "충북": "충청북도",
+        "충남": "충청남도",
+        "전북": "전북특별자치도",
+        "전남": "전라남도",
+        "경북": "경상북도",
+        "경남": "경상남도",
+        "제주": "제주특별자치도",
+    }
+    candidates = [keyword, normalize_region_keyword(keyword)]
+    if keyword in alias_pairs:
+        candidates.append(alias_pairs[keyword])
+    for short_name, full_name in alias_pairs.items():
+        if keyword == full_name:
+            candidates.append(short_name)
+            break
+    return [item for item in dict.fromkeys(candidates) if item and item != "전국"]
+
+
+def region_match_sql(alias: str, region_keyword: str | None, params: list[Any]) -> str:
+    """regions 테이블 기준 지역 필터를 만든다.
+
+    주의: 장소/숙소/식당의 address LIKE를 지역 필터에 섞지 않는다.
+    address 기준으로 필터링하면 region_id가 잘못 들어간 기존 데이터 때문에
+    '대구 검색인데 부산 region_id가 붙은 행'이 다시 노출될 수 있다.
+    """
+    candidates = region_keyword_candidates(region_keyword)
+    if not candidates or candidates == ["전국"]:
+        return ""
+    clauses = []
+    for keyword in candidates:
+        like = f"%{keyword}%"
+        clauses.append(f"({alias}.region_name = %s OR {alias}.province = %s OR {alias}.region_name LIKE %s OR {alias}.province LIKE %s)")
+        params.extend([keyword, keyword, like, like])
+    return "(" + " OR ".join(clauses) + ")"
+
+
+def region_where_sql(alias: str, region_keyword: str | None, params: list[Any]) -> str:
+    clause = region_match_sql(alias, region_keyword, params)
+    return f"WHERE {clause}" if clause else ""
+
+
+def get_region_id_for_keyword(region_keyword: str | None) -> int | None:
+    """화면에서 선택한 지역명에 해당하는 대표 region_id를 DB에서 찾는다."""
+    params: list[Any] = []
+    clause = region_match_sql("r", region_keyword, params)
+    if not clause:
+        return None
+    candidates = region_keyword_candidates(region_keyword)
+    placeholders = ", ".join(["%s"] * len(candidates))
+    row = fetch_one(
+        f"""
+        SELECT r.region_id
+        FROM regions r
+        WHERE {clause}
+        ORDER BY
+          CASE
+            WHEN r.region_name IN ({placeholders}) THEN 0
+            WHEN r.province IN ({placeholders}) AND (r.tour_sigungu_code IS NULL OR r.tour_sigungu_code = '') THEN 1
+            ELSE 2
+          END,
+          r.region_id
+        LIMIT 1
+        """,
+        (*params, *candidates, *candidates),
+    )
+    return int(row["region_id"]) if row else None
 
 
 def dashboard_counts() -> dict[str, int]:
@@ -459,10 +723,9 @@ def search_places_for_planner(
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     filters = []
-    if region_keyword and region_keyword != "전국":
-        like = f"%{region_keyword}%"
-        filters.append("(r.region_name LIKE %s OR r.province LIKE %s OR p.address LIKE %s)")
-        params.extend([like, like, like])
+    region_clause = region_match_sql("r", region_keyword, params)
+    if region_clause:
+        filters.append(region_clause)
     if category_names:
         placeholders = ", ".join(["%s"] * len(category_names))
         filters.append(
@@ -522,12 +785,12 @@ def search_places_for_planner(
 def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[dict[str, Any]]:
     params: list[Any] = []
     filters = []
-    if region_keyword and region_keyword != "전국":
-        like = f"%{region_keyword}%"
-        filters.append("(r.region_name LIKE %s OR r.province LIKE %s OR rt.address LIKE %s)")
-        params.extend([like, like, like])
+    region_clause = region_match_sql("r", region_keyword, params)
+    if region_clause:
+        filters.append(region_clause)
     params.append(limit)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
+    media_selects = ",\n          ".join(media_optional_selects("restaurants", "rt"))
     return fetch_all(
         f"""
         SELECT
@@ -535,8 +798,8 @@ def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[d
           rt.restaurant_name,
           rt.food_type,
           rt.address,
-          rt.price_level,
-          r.region_name
+          r.region_name,
+          {media_selects}
         FROM restaurants rt
         JOIN regions r ON r.region_id = rt.region_id
         {where_sql}
@@ -550,21 +813,21 @@ def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[d
 def search_accommodations_for_region(region_keyword: str, limit: int = 6) -> list[dict[str, Any]]:
     params: list[Any] = []
     filters = []
-    if region_keyword and region_keyword != "전국":
-        like = f"%{region_keyword}%"
-        filters.append("(r.region_name LIKE %s OR r.province LIKE %s OR a.address LIKE %s)")
-        params.extend([like, like, like])
+    region_clause = region_match_sql("r", region_keyword, params)
+    if region_clause:
+        filters.append(region_clause)
     params.append(limit)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
+    media_selects = ",\n          ".join(media_optional_selects("accommodations", "a"))
     return fetch_all(
         f"""
         SELECT
           a.accommodation_id,
           a.accommodation_name,
           a.address,
-          a.price_level,
           a.phone,
-          r.region_name
+          r.region_name,
+          {media_selects}
         FROM accommodations a
         JOIN regions r ON r.region_id = a.region_id
         {where_sql}
@@ -574,6 +837,54 @@ def search_accommodations_for_region(region_keyword: str, limit: int = 6) -> lis
         params,
     )
 
+
+def search_festivals_for_region(region_keyword: str, limit: int = 6) -> list[dict[str, Any]]:
+    params: list[Any] = []
+    filters: list[str] = []
+    region_clause = region_match_sql("r", region_keyword, params)
+    if region_clause:
+        filters.append(region_clause)
+    # 날짜가 없는 축제도 정보 카드로 보여준다. 날짜가 있으면 종료되지 않은 축제를 우선 정렬한다.
+    params.append(limit)
+    where_sql = "WHERE " + " AND ".join(filters) if filters else ""
+    media_selects = ",\n          ".join(media_optional_selects("festivals", "f"))
+    return fetch_all(
+        f"""
+        SELECT
+          f.festival_id,
+          f.festival_name,
+          r.region_name,
+          f.start_date,
+          f.end_date,
+          f.fee_info,
+          f.homepage,
+          f.overview,
+          f.source_url,
+          {media_selects}
+        FROM festivals f
+        JOIN regions r ON r.region_id = f.region_id
+        {where_sql}
+        ORDER BY
+          CASE WHEN f.end_date IS NOT NULL AND f.end_date < CURDATE() THEN 1 ELSE 0 END,
+          COALESCE(f.start_date, '2999-12-31'),
+          f.festival_name
+        LIMIT %s
+        """,
+        params,
+    )
+
+
+
+def favorite_place_ids(member_id: int) -> set[int]:
+    """현재 회원이 찜한 place_id 목록을 세트로 반환한다."""
+    try:
+        rows = fetch_all(
+            "SELECT place_id FROM favorites WHERE member_id = %s",
+            (member_id,),
+        )
+    except Error:
+        return set()
+    return {int(row["place_id"]) for row in rows if row.get("place_id") is not None}
 
 def toggle_favorite(member_id: int, place_id: int) -> str:
     existing = fetch_one(
@@ -798,42 +1109,123 @@ def upsert_place_with_categories(row: dict[str, Any]) -> int:
 
 
 def upsert_restaurant_from_place(row: dict[str, Any]) -> int:
+    restaurant_columns = get_table_columns("restaurants")
+    columns = ["region_id", "restaurant_name", "food_type", "address"]
+    for column in (
+        "phone",
+        "source_url",
+        "external_id",
+        "content_type_id",
+        "content_type_name",
+        "cat1",
+        "cat2",
+        "cat3",
+        "first_menu",
+        "treat_menu",
+        "open_time",
+        "rest_date",
+        "parking_info",
+        "detail_intro_json",
+        "image_path",
+        "image_original_url",
+        "image_saved_at",
+    ):
+        if column in restaurant_columns:
+            columns.append(column)
+    values = {
+        "region_id": row["region_id"],
+        "restaurant_name": row["place_name"],
+        "food_type": row.get("food_type") or row.get("content_type_name") or "음식점",
+        "address": row.get("address"),
+        "phone": row.get("phone"),
+        "source_url": row.get("source_url"),
+        "external_id": row.get("external_id"),
+        "content_type_id": row.get("content_type_id"),
+        "content_type_name": row.get("content_type_name"),
+        "cat1": row.get("cat1"),
+        "cat2": row.get("cat2"),
+        "cat3": row.get("cat3"),
+        "first_menu": row.get("first_menu"),
+        "treat_menu": row.get("treat_menu"),
+        "open_time": row.get("open_time"),
+        "rest_date": row.get("rest_date"),
+        "parking_info": row.get("parking_info"),
+        "detail_intro_json": row.get("detail_intro_json"),
+        "image_path": row.get("image_path"),
+        "image_original_url": row.get("image_original_url"),
+        "image_saved_at": row.get("image_saved_at"),
+    }
+    placeholders = ", ".join(["%s"] * len(columns))
+    update_columns = [column for column in columns if column not in {"region_id", "restaurant_name"}]
+    update_sql = ",\n          ".join(f"{column} = VALUES({column})" for column in update_columns)
     return execute(
-        """
-        INSERT INTO restaurants (region_id, restaurant_name, food_type, address, price_level)
-        VALUES (%s, %s, %s, %s, %s)
+        f"""
+        INSERT INTO restaurants ({", ".join(columns)})
+        VALUES ({placeholders})
         ON DUPLICATE KEY UPDATE
-          food_type = VALUES(food_type),
-          address = VALUES(address),
-          price_level = VALUES(price_level)
+          {update_sql}
         """,
-        (
-            row["region_id"],
-            row["place_name"],
-            row.get("food_type") or "음식점",
-            row.get("address"),
-            "MID",
-        ),
+        tuple(values.get(column) for column in columns),
     )
 
 
 def upsert_accommodation_from_place(row: dict[str, Any]) -> int:
+    accommodation_columns = get_table_columns("accommodations")
+    columns = ["region_id", "accommodation_name", "address"]
+    for column in (
+        "phone",
+        "source_url",
+        "external_id",
+        "content_type_id",
+        "content_type_name",
+        "cat1",
+        "cat2",
+        "cat3",
+        "checkin_time",
+        "checkout_time",
+        "room_count",
+        "reservation_url",
+        "parking_info",
+        "detail_intro_json",
+        "image_path",
+        "image_original_url",
+        "image_saved_at",
+    ):
+        if column in accommodation_columns:
+            columns.append(column)
+    values = {
+        "region_id": row["region_id"],
+        "accommodation_name": row["place_name"],
+        "address": row.get("address"),
+        "phone": row.get("phone"),
+        "source_url": row.get("source_url"),
+        "external_id": row.get("external_id"),
+        "content_type_id": row.get("content_type_id"),
+        "content_type_name": row.get("content_type_name"),
+        "cat1": row.get("cat1"),
+        "cat2": row.get("cat2"),
+        "cat3": row.get("cat3"),
+        "checkin_time": row.get("checkin_time"),
+        "checkout_time": row.get("checkout_time"),
+        "room_count": row.get("room_count"),
+        "reservation_url": row.get("reservation_url"),
+        "parking_info": row.get("parking_info"),
+        "detail_intro_json": row.get("detail_intro_json"),
+        "image_path": row.get("image_path"),
+        "image_original_url": row.get("image_original_url"),
+        "image_saved_at": row.get("image_saved_at"),
+    }
+    placeholders = ", ".join(["%s"] * len(columns))
+    update_columns = [column for column in columns if column not in {"region_id", "accommodation_name"}]
+    update_sql = ",\n          ".join(f"{column} = VALUES({column})" for column in update_columns)
     return execute(
-        """
-        INSERT INTO accommodations (region_id, accommodation_name, address, price_level, phone)
-        VALUES (%s, %s, %s, %s, %s)
+        f"""
+        INSERT INTO accommodations ({", ".join(columns)})
+        VALUES ({placeholders})
         ON DUPLICATE KEY UPDATE
-          address = VALUES(address),
-          price_level = VALUES(price_level),
-          phone = VALUES(phone)
+          {update_sql}
         """,
-        (
-            row["region_id"],
-            row["place_name"],
-            row.get("address"),
-            "MID",
-            row.get("phone"),
-        ),
+        tuple(values.get(column) for column in columns),
     )
 
 
@@ -851,29 +1243,25 @@ def upsert_tourapi_place(row: dict[str, Any]) -> int:
 
 
 def upsert_festival(row: dict[str, Any]) -> None:
+    festival_columns = get_table_columns("festivals")
+    columns = ["region_id", "festival_name", "start_date", "end_date", "fee_info", "homepage", "overview", "source_url", "external_id"]
+    for column in ("image_path", "image_original_url", "image_saved_at"):
+        if column in festival_columns:
+            columns.append(column)
+    values = {column: row.get(column) for column in columns}
+    values["region_id"] = row["region_id"]
+    values["festival_name"] = row["festival_name"]
+    placeholders = ", ".join(["%s"] * len(columns))
+    update_columns = [column for column in columns if column not in {"region_id", "festival_name", "start_date"}]
+    update_sql = ",\n          ".join(f"{column} = VALUES({column})" for column in update_columns)
     execute(
-        """
-        INSERT INTO festivals (region_id, festival_name, start_date, end_date, fee_info, homepage, overview, source_url, external_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        f"""
+        INSERT INTO festivals ({", ".join(columns)})
+        VALUES ({placeholders})
         ON DUPLICATE KEY UPDATE
-          end_date = VALUES(end_date),
-          fee_info = VALUES(fee_info),
-          homepage = VALUES(homepage),
-          overview = VALUES(overview),
-          source_url = VALUES(source_url),
-          external_id = VALUES(external_id)
+          {update_sql}
         """,
-        (
-            row["region_id"],
-            row["festival_name"],
-            row.get("start_date"),
-            row.get("end_date"),
-            row.get("fee_info"),
-            row.get("homepage"),
-            row.get("overview"),
-            row.get("source_url"),
-            row.get("external_id"),
-        ),
+        tuple(values[column] for column in columns),
     )
 
 
@@ -1078,10 +1466,7 @@ def advanced_api_counts() -> dict[str, int]:
 
 
 def _region_filter_sql(alias: str, region_keyword: str, params: list[Any]) -> str:
-    if not region_keyword or region_keyword == "전국":
-        return ""
-    params.append(f"%{region_keyword}%")
-    return f"WHERE {alias}.region_name LIKE %s"
+    return region_where_sql(alias, region_keyword, params)
 
 
 def api_insights_for_trip(region_keyword: str, place_names: list[str] | None = None) -> dict[str, Any]:
@@ -1128,9 +1513,9 @@ def api_insights_for_trip(region_keyword: str, place_names: list[str] | None = N
 
     related_params: list[Any] = []
     related_filters: list[str] = []
-    if region_keyword and region_keyword != "전국":
-        related_filters.append("ra.region_name LIKE %s")
-        related_params.append(f"%{region_keyword}%")
+    related_region_clause = region_match_sql("ra", region_keyword, related_params)
+    if related_region_clause:
+        related_filters.append(related_region_clause)
     clean_names = [name for name in (place_names or []) if name][:10]
     if clean_names:
         name_filters = []
@@ -1157,9 +1542,9 @@ def api_insights_for_trip(region_keyword: str, place_names: list[str] | None = N
     for source_api, key in (("DMANDRESR", "demand_metrics"), ("DMANDDVRST", "diversity_metrics")):
         metric_params: list[Any] = [source_api]
         metric_filters = ["m.source_api = %s"]
-        if region_keyword and region_keyword != "전국":
-            metric_filters.append("m.region_name LIKE %s")
-            metric_params.append(f"%{region_keyword}%")
+        metric_region_clause = region_match_sql("m", region_keyword, metric_params)
+        if metric_region_clause:
+            metric_filters.append(metric_region_clause)
         metric_where = "WHERE " + " AND ".join(metric_filters)
         try:
             insights[key] = fetch_all(
@@ -1211,6 +1596,9 @@ def api_score_lookup(region_keyword: str, place_names: list[str]) -> dict[str, d
     center_rows: list[dict[str, Any]] = []
     related_rows: list[dict[str, Any]] = []
     concentration_rows: list[dict[str, Any]] = []
+    photo_rows: list[dict[str, Any]] = []
+    visitor_row: dict[str, Any] | None = None
+    demand_rows: list[dict[str, Any]] = []
 
     params: list[Any] = []
     where_sql = _region_filter_sql("c", region_keyword, params)
@@ -1230,9 +1618,9 @@ def api_score_lookup(region_keyword: str, place_names: list[str]) -> dict[str, d
 
     related_params: list[Any] = []
     related_where = ""
-    if region_keyword and region_keyword != "전국":
-        related_where = "WHERE ra.region_name LIKE %s"
-        related_params.append(f"%{region_keyword}%")
+    related_region_clause = region_match_sql("ra", region_keyword, related_params)
+    if related_region_clause:
+        related_where = f"WHERE {related_region_clause}"
     try:
         related_rows = fetch_all(
             f"""
@@ -1263,20 +1651,89 @@ def api_score_lookup(region_keyword: str, place_names: list[str]) -> dict[str, d
     except Error:
         concentration_rows = []
 
+    visitor_params: list[Any] = []
+    visitor_where = _region_filter_sql("v", region_keyword, visitor_params)
+    try:
+        visitor_row = fetch_one(
+            f"""
+            SELECT region_name, stat_date, visitor_count
+            FROM region_visitor_stats v
+            {visitor_where}
+            ORDER BY stat_date DESC, visitor_count DESC
+            LIMIT 1
+            """,
+            visitor_params,
+        )
+    except Error:
+        visitor_row = None
+
+    demand_params: list[Any] = ["DMANDRESR", "DMANDDVRST"]
+    demand_filters = ["m.source_api IN (%s, %s)"]
+    demand_region_clause = region_match_sql("m", region_keyword, demand_params)
+    if demand_region_clause:
+        demand_filters.append(demand_region_clause)
+    try:
+        demand_rows = fetch_all(
+            f"""
+            SELECT source_api, metric_group, metric_name, metric_value, stat_date
+            FROM regional_demand_metrics m
+            WHERE {' AND '.join(demand_filters)}
+            ORDER BY stat_date DESC, metric_value DESC
+            LIMIT 6
+            """,
+            demand_params,
+        )
+    except Error:
+        demand_rows = []
+
+    photo_params: list[Any] = []
+    photo_filters: list[str] = []
+    if region_keyword and region_keyword != "전국":
+        like = f"%{region_keyword}%"
+        photo_filters.append("(tp.region_name LIKE %s OR tp.location LIKE %s OR tp.keywords LIKE %s)")
+        photo_params.extend([like, like, like])
+    photo_where = "WHERE " + " AND ".join(photo_filters) if photo_filters else ""
+    try:
+        photo_rows = fetch_all(
+            f"""
+            SELECT place_name, title, keywords, region_name
+            FROM tour_photos tp
+            {photo_where}
+            ORDER BY created_at DESC
+            LIMIT 200
+            """,
+            photo_params,
+        )
+    except Error:
+        photo_rows = []
+
     def matches(candidate: str, target: str) -> bool:
         candidate = candidate.strip()
         target = target.strip()
         return bool(candidate and target and (candidate in target or target in candidate))
 
+    region_boost = 0.0
+    region_reasons: list[str] = []
+    if visitor_row and visitor_row.get("visitor_count") is not None:
+        region_boost += 5
+        region_reasons.append("지역별 방문자수_GW 데이터가 있어 지역 인기 지표가 반영됩니다.")
+    if demand_rows:
+        region_boost += 5
+        region_reasons.append("지역별 관광 자원 수요/관광 다양성 지표가 결과 설명에 반영됩니다.")
+
     for name in clean_names:
         scored = result[name]
+        if region_boost:
+            scored["boost"] += region_boost
+            scored["reasons"].extend(region_reasons)
+
         for row in center_rows:
             attraction = str(row.get("attraction_name") or "")
             if not matches(attraction, name):
                 continue
             rank_no = _safe_int(row.get("rank_no")) or 100
             scored["boost"] += max(4, 18 - min(rank_no, 100) / 8)
-            scored["reasons"].append("내비게이션 연계 기준 중심 관광지 데이터에 포함됩니다.")
+            scored["reasons"].append("기초지자체 중심 관광지 정보 API에 포함됩니다.")
             break
 
         for row in related_rows:
@@ -1284,7 +1741,7 @@ def api_score_lookup(region_keyword: str, place_names: list[str]) -> dict[str, d
             related = str(row.get("related_name") or "")
             if matches(origin, name) or matches(related, name):
                 scored["boost"] += 8
-                scored["reasons"].append("연관 관광지 API에서 주변 코스 연결성이 확인됩니다.")
+                scored["reasons"].append("관광지별 연관 관광지 정보 API에서 코스 연결성이 확인됩니다.")
                 break
 
         for row in concentration_rows:
@@ -1294,12 +1751,135 @@ def api_score_lookup(region_keyword: str, place_names: list[str]) -> dict[str, d
             score = _safe_float(row.get("concentration_score"))
             if score is not None and score <= 70:
                 scored["boost"] += 6
-                scored["reasons"].append("방문 집중률 예측이 비교적 낮아 일정에 넣기 부담이 적습니다.")
+                scored["reasons"].append("관광지 집중률 방문자 추이 예측 정보상 혼잡 부담이 낮은 편입니다.")
             elif score is not None:
-                scored["reasons"].append("방문 집중률 예측 데이터가 있어 혼잡도 확인이 가능합니다.")
+                scored["reasons"].append("관광지 집중률 방문자 추이 예측 정보로 혼잡도 확인이 가능합니다.")
             break
 
+        for row in photo_rows:
+            if matches(str(row.get("place_name") or row.get("title") or ""), name):
+                scored["boost"] += 6
+                scored["reasons"].append("관광사진 정보_GW 데이터와 매칭되어 사진 우선 추천에 반영됩니다.")
+                break
+
     return {name: value for name, value in result.items() if value["boost"] or value["reasons"]}
+
+
+def region_center(region_keyword: str | None) -> dict[str, Any] | None:
+    params: list[Any] = []
+    clause = region_match_sql("r", region_keyword, params)
+    where_sql = f"WHERE {clause}" if clause else ""
+    row = fetch_one(
+        f"""
+        SELECT
+          r.region_name,
+          AVG(p.latitude) AS latitude,
+          AVG(p.longitude) AS longitude
+        FROM regions r
+        LEFT JOIN places p ON p.region_id = r.region_id AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL
+        {where_sql}
+        GROUP BY r.region_id, r.region_name
+        HAVING latitude IS NOT NULL AND longitude IS NOT NULL
+        ORDER BY r.region_id
+        LIMIT 1
+        """,
+        params,
+    )
+    if row:
+        return row
+    return fetch_one(
+        """
+        SELECT region_name, AVG(latitude) AS latitude, AVG(longitude) AS longitude
+        FROM places p
+        JOIN regions r ON r.region_id = p.region_id
+        WHERE p.latitude IS NOT NULL AND p.longitude IS NOT NULL
+        GROUP BY r.region_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+        """
+    )
+
+
+def save_kakao_places(region_name: str, keyword: str, rows: list[dict[str, Any]]) -> int:
+    ensure_advanced_api_schema()
+    count = 0
+    for row in rows:
+        kakao_id = str(row.get("id") or "").strip()
+        if not kakao_id:
+            continue
+        execute(
+            """
+            INSERT INTO live_kakao_places (
+              kakao_place_id, region_name, keyword, place_name, category_name,
+              address_name, road_address_name, phone, place_url, latitude, longitude, raw_json
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+              region_name = VALUES(region_name),
+              keyword = VALUES(keyword),
+              place_name = VALUES(place_name),
+              category_name = VALUES(category_name),
+              address_name = VALUES(address_name),
+              road_address_name = VALUES(road_address_name),
+              phone = VALUES(phone),
+              place_url = VALUES(place_url),
+              latitude = VALUES(latitude),
+              longitude = VALUES(longitude),
+              raw_json = VALUES(raw_json),
+              fetched_at = CURRENT_TIMESTAMP
+            """,
+            (
+                kakao_id,
+                region_name,
+                keyword,
+                row.get("place_name"),
+                row.get("category_name"),
+                row.get("address_name"),
+                row.get("road_address_name"),
+                row.get("phone"),
+                row.get("place_url"),
+                _safe_float(row.get("y")),
+                _safe_float(row.get("x")),
+                json.dumps(row, ensure_ascii=False),
+            ),
+        )
+        count += 1
+    return count
+
+
+def save_weather_snapshot(region_name: str, target_date: Any, lat: Any, lon: Any, weather: dict[str, Any]) -> int:
+    ensure_advanced_api_schema()
+    return execute(
+        """
+        INSERT INTO weather_cache (
+          region_name, target_date, latitude, longitude, weather_source,
+          condition_text, temp, feels_like, humidity, wind_speed, raw_json
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            region_name,
+            target_date,
+            lat,
+            lon,
+            weather.get("source"),
+            weather.get("condition"),
+            weather.get("temp"),
+            weather.get("feels_like"),
+            weather.get("humidity"),
+            weather.get("wind_speed"),
+            json.dumps(weather.get("raw_json") or weather, ensure_ascii=False),
+        ),
+    )
+
+
+def save_transport_estimate(origin: str, destination: str, travel_date: Any, people: int, estimate: dict[str, Any]) -> int:
+    ensure_advanced_api_schema()
+    return execute(
+        """
+        INSERT INTO transport_estimates (origin_text, destination_text, travel_date, people, estimate_json)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (origin, destination, travel_date, people, json.dumps(estimate, ensure_ascii=False)),
+    )
 
 
 def log_crawl(source_name: str, source_url: str | None, status: str, inserted_count: int, message: str) -> None:
