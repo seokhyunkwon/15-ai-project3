@@ -60,7 +60,30 @@ $env:TOUR_API_KEY="공공데이터포털_TourAPI_서비스키"
 python collector.py --all --limit-per-area 50
 ```
 
-`--limit-per-area`가 커질수록 수집 시간과 이미지 용량이 크게 늘어납니다. 수집 순서는 대략 관광지, 식당, 숙소, 축제 순서입니다.
+`--limit-per-area 50`은 광역 지역별 50개까지만 가져오는 빠른 수집입니다. TourAPI에 있는 항목을 끝까지 수집하려면 아래처럼 `0`을 사용합니다.
+
+```powershell
+$env:TOUR_API_KEY="공공데이터포털_TourAPI_서비스키"
+python collector.py --all --limit-per-area 0
+```
+
+`--limit-per-area 0`은 시군구를 순회하고 페이지를 끝까지 넘기므로 수집 시간, API 호출량, 이미지 용량이 크게 늘어납니다. 공공데이터포털 일 호출 제한이 있다면 여러 날에 나눠 실행하세요. 수집 순서는 대략 관광지, 식당, 숙소, 축제 순서입니다.
+
+식당과 숙소는 그대로 두고, 관광지가 비어 있는 지역과 축제만 추가 수집:
+
+```powershell
+$env:TOUR_API_KEY="공공데이터포털_TourAPI_서비스키"
+python collect_missing_places_and_festivals.py --place-limit-per-region 50 --festival-limit 100
+```
+
+관광지가 비어 있는 지역을 끝까지 채우고 축제도 전체 수집하려면:
+
+```powershell
+$env:TOUR_API_KEY="공공데이터포털_TourAPI_서비스키"
+python collect_missing_places_and_festivals.py --place-limit-per-region 0 --festival-limit 0
+```
+
+먼저 대상만 확인하려면 `--dry-run`을 붙입니다.
 
 대표 이미지가 비어 있는 관광지는 전체 수집이 끝난 뒤 별도 백필 스크립트로 보강합니다.
 

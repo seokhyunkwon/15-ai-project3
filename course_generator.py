@@ -33,6 +33,15 @@ def has_image(place: dict[str, Any]) -> bool:
     return any(safe_text(place.get(key)) for key in ("image_path", "image_url", "image_original_url"))
 
 
+def brief_description(value: Any, fallback: str = "소개 정보가 없습니다.", max_length: int = 180) -> str:
+    text = " ".join(safe_text(value).split())
+    if not text:
+        return fallback
+    if len(text) <= max_length:
+        return text
+    return text[:max_length].rstrip() + "..."
+
+
 def slot_keywords(slot: str) -> list[str]:
     for key, keywords in SLOT_KEYWORDS.items():
         if key in slot:
@@ -72,7 +81,6 @@ def generate_course(scored_places: list[dict[str, Any]], duration: str) -> list[
             continue
         place_id = int(place.get("place_id") or 0)
         used_place_ids.add(place_id)
-        reasons = place.get("recommendation_reasons") or ["추천 점수가 높은 장소입니다."]
         course.append(
             {
                 "time_slot": slot,
@@ -81,15 +89,12 @@ def generate_course(scored_places: list[dict[str, Any]], duration: str) -> list[
                 "category": safe_text(place.get("categories"), "-"),
                 "address": safe_text(place.get("address"), "주소 정보 없음"),
                 "recommendation_score": place.get("recommendation_score", 0),
-                "recommendation_reasons": reasons,
-                "recommendation_breakdown": place.get("recommendation_breakdown") or [],
-                "reason": reasons[0],
+                "score_reasons": place.get("score_reasons") or [],
+                "description": brief_description(place.get("overview")),
                 "image_path": place.get("image_path"),
                 "image_url": place.get("image_url"),
                 "image_original_url": place.get("image_original_url"),
                 "source_url": place.get("source_url"),
-                "average_rating": place.get("average_rating"),
-                "review_count": place.get("review_count"),
                 "latitude": place.get("latitude"),
                 "longitude": place.get("longitude"),
             }

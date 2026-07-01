@@ -122,6 +122,21 @@ def _filter_existing_columns(table_name: str, data: dict[str, Any]) -> dict[str,
     return {key: value for key, value in data.items() if key in columns}
 
 
+def _entity_exists_by_external_id(entity_type: str, external_id: Any) -> bool:
+    content_id = _safe_text(external_id)
+    if not content_id:
+        return False
+    if entity_type not in {"places", "restaurants", "accommodations"}:
+        return False
+    if "external_id" not in _table_columns(entity_type):
+        return False
+    row = db.fetch_one(
+        f"SELECT 1 AS exists_flag FROM `{entity_type}` WHERE external_id = %s LIMIT 1",
+        (content_id,),
+    )
+    return bool(row)
+
+
 def _upsert_row(table_name: str, data: dict[str, Any], skip_update: set[str] | None = None) -> None:
     """테이블에 존재하는 컬럼만 골라서 INSERT ... ON DUPLICATE KEY UPDATE 실행."""
     data = _filter_existing_columns(table_name, data)
@@ -296,6 +311,24 @@ def _items_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(items, list):
         return [item for item in items if isinstance(item, dict)]
     return []
+
+
+def _body_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    response = payload.get("response")
+    if not isinstance(response, dict):
+        return {}
+    body = response.get("body")
+    return body if isinstance(body, dict) else {}
+
+
+def _api_page(service_key: str, endpoint: str, params: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    payload = _tourapi_get(service_key, endpoint, params)
+    body = _body_from_payload(payload)
+    try:
+        total_count = int(body.get("totalCount") or 0)
+    except (TypeError, ValueError):
+        total_count = 0
+    return _items_from_payload(payload), total_count
 
 
 def _api_items(service_key: str, endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -757,7 +790,8 @@ def fetch_tourapi_festivals(service_key: str, limit: int = 100) -> list[dict[str
 
     # 오늘 날짜로만 잡으면 미래 축제가 적을 수 있으므로 올해 1월 1일부터 조회
     start_date = f"{date.today().year}0101"
-    per_area = max(1, min(limit, 50))
+    collection_limit = max(0, int(limit or 0))
+    per_page = 100 if collection_limit == 0 else max(1, min(collection_limit, 100))
 
     # 1차: searchFestival2 사용
     for area in areas:
@@ -765,23 +799,35 @@ def fetch_tourapi_festivals(service_key: str, limit: int = 100) -> list[dict[str
         if not area_code:
             continue
 
-        try:
-            rows = _api_items(
-                service_key,
-                TOUR_API_FESTIVAL_URL,
-                {
-                    "eventStartDate": start_date,
-                    "areaCode": area_code,
-                    "numOfRows": per_area,
-                    "pageNo": 1,
-                    "arrange": "A",
-                },
-            )
+        page_no = 1
+        while True:
+            try:
+                rows, total_count = _api_page(
+                    service_key,
+                    TOUR_API_FESTIVAL_URL,
+                    {
+                        "eventStartDate": start_date,
+                        "areaCode": area_code,
+                        "numOfRows": per_page,
+                        "pageNo": page_no,
+                        "arrange": "A",
+                    },
+                )
+            except Exception as exc:
+                print(f"[축제 searchFestival2 실패] areaCode={area_code}: {exc}")
+                break
+            if not rows:
+                break
             items.extend(rows)
-        except Exception as exc:
-            print(f"[축제 searchFestival2 실패] areaCode={area_code}: {exc}")
+            if collection_limit and len(items) >= collection_limit:
+                break
+            if total_count and page_no * per_page >= total_count:
+                break
+            if len(rows) < per_page:
+                break
+            page_no += 1
 
-        if len(items) >= limit:
+        if collection_limit and len(items) >= collection_limit:
             break
 
     # 2차: 그래도 0건이면 areaBasedList2 + contentTypeId=15로 fallback
@@ -800,7 +846,7 @@ def fetch_tourapi_festivals(service_key: str, limit: int = 100) -> list[dict[str
                     {
                         "contentTypeId": "15",
                         "areaCode": area_code,
-                        "numOfRows": per_area,
+                        "numOfRows": per_page,
                         "pageNo": 1,
                         "arrange": "A",
                     },
@@ -809,12 +855,12 @@ def fetch_tourapi_festivals(service_key: str, limit: int = 100) -> list[dict[str
             except Exception as exc:
                 print(f"[축제 areaBasedList2 실패] areaCode={area_code}: {exc}")
 
-            if len(items) >= limit:
+            if collection_limit and len(items) >= collection_limit:
                 break
 
     festivals: list[dict[str, Any]] = []
 
-    for item in items[:limit]:
+    for item in (items[:collection_limit] if collection_limit else items):
         item = enrich_item_with_details(service_key, item)
         region_id = resolve_region_id(item.get("areacode"), item.get("sigungucode"))
         if not region_id:
@@ -863,27 +909,96 @@ def fetch_tourapi_festivals(service_key: str, limit: int = 100) -> list[dict[str
     return festivals
 
 
-def fetch_area_based_items(service_key: str, entity_type: str, limit_per_area: int = 10) -> list[dict[str, Any]]:
+def fetch_area_based_items(
+    service_key: str,
+    entity_type: str,
+    limit_per_area: int = 10,
+    include_sigungu: bool = True,
+    page_size: int = 100,
+) -> list[dict[str, Any]]:
     content_type_id = CONTENT_TYPES[entity_type]
     areas = _api_items(service_key, TOUR_API_AREA_CODE_URL, {"numOfRows": 100, "pageNo": 1})
     all_items: list[dict[str, Any]] = []
+    seen_content_ids: set[str] = set()
 
     for area in areas:
         area_code = _safe_text(area.get("code"))
         if not area_code:
             continue
-        rows = _api_items(
-            service_key,
-            TOUR_API_AREA_BASED_URL,
-            {
-                "contentTypeId": content_type_id,
-                "areaCode": area_code,
-                "numOfRows": limit_per_area,
-                "pageNo": 1,
-                "arrange": "A",
-            },
-        )
-        all_items.extend(rows)
+
+        targets: list[tuple[str, str | None]] = []
+        if include_sigungu:
+            try:
+                sigungus = _api_items(
+                    service_key,
+                    TOUR_API_AREA_CODE_URL,
+                    {"areaCode": area_code, "numOfRows": 300, "pageNo": 1},
+                )
+            except Exception:
+                sigungus = []
+            targets = [
+                (area_code, _safe_text(sigungu.get("code")))
+                for sigungu in sigungus
+                if _safe_text(sigungu.get("code"))
+            ]
+        if not targets:
+            targets = [(area_code, None)]
+
+        area_count = 0
+        area_limit = max(0, int(limit_per_area or 0))
+        for target_area_code, sigungu_code in targets:
+            page_no = 1
+            while True:
+                request_rows = max(1, min(int(page_size or 100), 1000))
+                if area_limit:
+                    remaining = area_limit - area_count
+                    if remaining <= 0:
+                        break
+                    request_rows = min(request_rows, remaining)
+
+                params: dict[str, Any] = {
+                    "contentTypeId": content_type_id,
+                    "areaCode": target_area_code,
+                    "numOfRows": request_rows,
+                    "pageNo": page_no,
+                    "arrange": "A",
+                }
+                if sigungu_code:
+                    params["sigunguCode"] = sigungu_code
+
+                rows, total_count = _api_page(service_key, TOUR_API_AREA_BASED_URL, params)
+                if not rows:
+                    break
+
+                for row in rows:
+                    content_id = _safe_text(row.get("contentid")) or _safe_text(row.get("contentId"))
+                    dedupe_key = content_id or "|".join(
+                        [
+                            _safe_text(row.get("title")) or "",
+                            _safe_text(row.get("addr1")) or "",
+                            _safe_text(row.get("mapx")) or "",
+                            _safe_text(row.get("mapy")) or "",
+                        ]
+                    )
+                    if dedupe_key and dedupe_key in seen_content_ids:
+                        continue
+                    if dedupe_key:
+                        seen_content_ids.add(dedupe_key)
+                    all_items.append(row)
+                    area_count += 1
+                    if area_limit and area_count >= area_limit:
+                        break
+
+                if area_limit and area_count >= area_limit:
+                    break
+                if total_count and page_no * request_rows >= total_count:
+                    break
+                if len(rows) < request_rows:
+                    break
+                page_no += 1
+
+            if area_limit and area_count >= area_limit:
+                break
 
     return all_items
 
@@ -900,8 +1015,16 @@ def collect_full_tourapi_data(service_key: str, limit_per_area: int = 10, includ
 
     for entity_type in ["places", "restaurants", "accommodations"]:
         try:
-            items = fetch_area_based_items(service_key, entity_type, limit_per_area=limit_per_area)
+            items = fetch_area_based_items(
+                service_key,
+                entity_type,
+                limit_per_area=limit_per_area,
+                include_sigungu=include_sigungu,
+            )
             for item in items:
+                content_id = _safe_text(item.get("contentid")) or _safe_text(item.get("contentId"))
+                if _entity_exists_by_external_id(entity_type, content_id):
+                    continue
                 enriched = enrich_item_with_details(service_key, item)
                 if save_tourapi_item(entity_type, enriched):
                     stats[entity_type] += 1
@@ -916,7 +1039,8 @@ def collect_full_tourapi_data(service_key: str, limit_per_area: int = 10, includ
 
     # 축제는 행사 시작/종료일을 받기 위해 searchFestival2 사용
     try:
-        festivals = fetch_tourapi_festivals(service_key, limit=max(20, limit_per_area * 17))
+        festival_limit = 0 if int(limit_per_area or 0) == 0 else max(20, limit_per_area * 17)
+        festivals = fetch_tourapi_festivals(service_key, limit=festival_limit)
         for festival in festivals:
             _upsert_row("festivals", festival, skip_update={"region_id", "festival_name", "start_date"})
             stats["festivals"] += 1
@@ -934,6 +1058,7 @@ def collect_full_tourapi_data(service_key: str, limit_per_area: int = 10, includ
 
 
 def crawl_visitkorea_festival_titles(limit: int = 10) -> list[dict[str, Any]]:
+    crawl_limit = max(0, int(limit or 0))
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -968,7 +1093,7 @@ def crawl_visitkorea_festival_titles(limit: int = 10) -> list[dict[str, Any]]:
                 "external_id": None,
             }
         )
-        if len(festivals) >= limit:
+        if crawl_limit and len(festivals) >= crawl_limit:
             break
     return festivals
 
@@ -1049,7 +1174,8 @@ def collect_festival_data(service_key: str | None = None, limit: int = 20) -> tu
             return fallback_festivals(), "FALLBACK", f"TourAPI 호출 실패로 샘플 축제를 사용했습니다: {exc}"
 
     try:
-        festivals = crawl_visitkorea_festival_titles(min(limit, 10))
+        crawl_limit = 0 if int(limit or 0) == 0 else min(limit, 10)
+        festivals = crawl_visitkorea_festival_titles(crawl_limit)
         if festivals:
             return festivals, "SUCCESS", "HTML 크롤링으로 축제 제목 후보를 수집했습니다."
     except Exception as exc:
@@ -1080,7 +1206,7 @@ def main() -> None:
     parser.add_argument("--service-key", default=os.getenv("TOUR_API_KEY"), help="한국관광공사 TourAPI 서비스키")
     parser.add_argument("--regions-only", action="store_true", help="지역 코드만 동기화")
     parser.add_argument("--all", action="store_true", help="지역/관광지/음식점/숙소/축제 전체 수집")
-    parser.add_argument("--limit-per-area", type=int, default=10, help="광역 지역 1개당 수집 개수")
+    parser.add_argument("--limit-per-area", type=int, default=10, help="광역 지역 1개당 수집 개수. 0이면 시군구별 전체 페이지를 수집")
     parser.add_argument("--no-sigungu", action="store_true", help="시군구 지역은 만들지 않고 광역 지역만 동기화")
     args = parser.parse_args()
 
@@ -1101,7 +1227,8 @@ def main() -> None:
         print(f"전체 수집 완료: {stats}")
         return
 
-    festivals, status, message = collect_festival_data(args.service_key, limit=args.limit_per_area * 17)
+    festival_limit = 0 if int(args.limit_per_area or 0) == 0 else args.limit_per_area * 17
+    festivals, status, message = collect_festival_data(args.service_key, limit=festival_limit)
     inserted = 0
     for row in festivals:
         _upsert_row("festivals", row, skip_update={"region_id", "festival_name", "start_date"})

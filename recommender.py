@@ -88,10 +88,6 @@ def contains_any(text: str, keywords: list[str]) -> bool:
     return any(keyword and keyword in text for keyword in keywords)
 
 
-def _breakdown_item(label: str, points: float, detail: str) -> dict[str, Any]:
-    return {"label": label, "points": round(float(points), 1), "detail": detail}
-
-
 def _has_image(row: dict[str, Any]) -> bool:
     return bool(row.get("image_path") or row.get("image_url") or row.get("image_original_url"))
 
@@ -105,6 +101,27 @@ def _has_official_detail(row: dict[str, Any]) -> bool:
         or row.get("use_fee")
         or row.get("parking_fee")
     )
+
+
+def _detail_score(row: dict[str, Any]) -> float:
+    overview = safe_text(row.get("overview"))
+    score = min(len(overview) / 70, 14) if overview else 0
+    if safe_text(row.get("address")):
+        score += 4
+    if row.get("latitude") and row.get("longitude"):
+        score += 6
+    if safe_text(row.get("phone")):
+        score += 2
+    if safe_text(row.get("source_url")):
+        score += 2
+    return min(score, 22)
+
+
+def _stable_spread(row: dict[str, Any]) -> float:
+    seed = safe_text(row.get("place_id") or row.get("external_id") or row.get("place_name"))
+    if not seed:
+        return 0
+    return (sum(ord(char) for char in seed) % 17) / 10
 
 
 def matching_categories(row: dict[str, Any], preferences: dict[str, Any]) -> list[str]:
@@ -138,79 +155,92 @@ def score_place(
     scored = dict(row)
     favorite_category_counts = favorite_category_counts or {}
     score = 0.0
-    reasons: list[str] = []
-    breakdown: list[dict[str, Any]] = []
+    score_reasons: list[tuple[float, str]] = []
 
-    def add_points(label: str, points: float, detail: str) -> None:
+    def add_points(points: float, reason: str | None = None) -> None:
         nonlocal score
         if points <= 0:
             return
         score += points
-        reasons.append(detail)
-        breakdown.append(_breakdown_item(label, points, detail))
+        if reason:
+            score_reasons.append((points, reason))
 
     destination = safe_text(preferences.get("destination"))
     region_name = safe_text(scored.get("region_name"))
     if destination and destination != "전국" and (destination in region_name or region_name in destination):
-        add_points("지역 일치", 18, f"선택한 지역({destination})의 TourAPI/DB 후보입니다.")
+        if destination == region_name:
+            add_points(34, f"지역 일치: 선택한 지역({destination})과 정확히 맞는 장소입니다.")
+        else:
+            add_points(24, f"지역권 일치: 선택한 지역({destination})과 같은 권역의 장소입니다.")
     elif destination == "전국":
-        add_points("전국 후보", 8, "전국 검색 조건에 포함된 후보입니다.")
+        add_points(4)
 
     category_matches = matching_categories(scored, preferences)
     if category_matches:
         label = ", ".join(category_matches[:3])
-        add_points("카테고리 일치", 25, f"선택 카테고리({label})와 DB 카테고리 또는 TourAPI 분류가 일치합니다.")
+        category_points = 28 + min(len(category_matches) * 4, 12)
+        add_points(category_points, f"취향 일치: 선택한 카테고리와 연결됩니다. ({label})")
 
     content_type_id = safe_text(scored.get("content_type_id"))
     if content_type_id:
         content_type_name = TOUR_CONTENT_TYPE_NAMES.get(content_type_id, safe_text(scored.get("content_type_name")) or content_type_id)
         scored["content_type_name"] = content_type_name
-        add_points("TourAPI 타입 확인", 8, f"국문 관광정보 서비스 contenttypeid={content_type_id}({content_type_name}) 항목입니다.")
+        add_points(5, f"장소 유형: {content_type_name} 유형으로 분류된 장소입니다.")
 
     cat_detail = "/".join(safe_text(scored.get(key)) for key in ("cat1", "cat2", "cat3") if safe_text(scored.get(key)))
     if cat_detail:
-        add_points("세부 분류 보유", 7, f"TourAPI 세부 분류({cat_detail})가 저장되어 있습니다.")
+        add_points(4 + min(cat_detail.count("/") * 2, 4), "세부 분류: 장소 성격을 판단할 수 있는 분류 정보가 있습니다.")
 
     if _has_image(scored):
-        add_points("대표 사진 보유", 10, "한국관광공사 이미지 또는 관광사진 데이터가 있어 카드/코스에 우선 노출됩니다.")
+        add_points(11, "대표 이미지: 사진이 있어 방문 전 분위기를 확인하기 좋습니다.")
 
     if _has_official_detail(scored):
-        add_points("상세정보 보유", 8, "detailCommon/detailIntro/detailInfo 기반 상세 정보가 저장되어 있습니다.")
+        add_points(7, "이용 정보: 소개, 이용시간, 요금 같은 상세 정보가 비교적 갖춰져 있습니다.")
+
+    detail_points = _detail_score(scored)
+    if detail_points >= 14:
+        detail_bits = []
+        if safe_text(scored.get("address")):
+            detail_bits.append("주소")
+        if scored.get("latitude") and scored.get("longitude"):
+            detail_bits.append("좌표")
+        if safe_text(scored.get("overview")):
+            detail_bits.append("소개")
+        label = ", ".join(detail_bits) or "기본 정보"
+        add_points(detail_points, f"정보 충실도: {label} 정보가 있어 일정에 넣기 좋습니다.")
+    elif detail_points:
+        add_points(detail_points)
 
     fee_text = safe_text(scored.get("use_fee") or scored.get("fee_info"))
     if fee_text:
-        if "무료" in fee_text:
-            add_points("무료/요금 정보", 7, f"공식 상세정보에 요금 정보가 있습니다: {fee_text[:80]}")
+        fee_preview = fee_text[:36] + ("..." if len(fee_text) > 36 else "")
+        if "무료" in fee_text or "free" in fee_text.lower():
+            add_points(5, f"요금 정보: 무료 또는 요금 안내가 확인됩니다. ({fee_preview})")
         else:
-            add_points("요금 정보 보유", 4, f"공식 상세정보의 요금 안내가 있습니다: {fee_text[:80]}")
-
-    rating = safe_float(scored.get("average_rating"))
-    review_count = safe_int(scored.get("review_count"))
-    if rating and review_count:
-        rating_points = min(rating * 5, 25)
-        add_points("사용자 평점", rating_points, f"사이트 리뷰 {review_count}개 기준 평균 평점 {rating:.2f}점입니다.")
+            add_points(2, f"요금 정보: 방문 전 참고할 요금 안내가 있습니다. ({fee_preview})")
 
     for category in category_tokens(scored):
         favorite_count = favorite_category_counts.get(category, 0)
         if favorite_count:
             favorite_points = min(favorite_count * 4, 12)
-            add_points("찜 성향", favorite_points, f"사용자가 찜한 {category} 카테고리와 연결됩니다.")
+            add_points(favorite_points, f"찜 기반 취향: 내가 찜한 {category} 계열 장소와 연결됩니다.")
             break
 
     api_score_boost = safe_float(scored.get("api_score_boost"))
     if api_score_boost:
-        api_points = min(api_score_boost, 36)
-        api_reasons = [safe_text(reason) for reason in scored.get("api_reasons") or [] if safe_text(reason)]
-        api_reason = " / ".join(api_reasons[:3]) or "방문자·중심 관광지·연관 관광지·혼잡도 공공데이터가 반영되었습니다."
-        add_points("공공데이터 보정", api_points, api_reason)
+        api_points = min(api_score_boost * 1.35, 48)
+        add_points(api_points, "인기도/동선성: 방문 흐름과 주변 관광지 연결성을 함께 반영했습니다.")
 
-    if not breakdown:
-        breakdown.append(_breakdown_item("공식 데이터 부족", 0, "지역 후보에는 포함되지만 카테고리/사진/상세정보/방문자 지표가 아직 충분히 저장되지 않았습니다."))
-        reasons.append("공식 API 상세정보를 더 수집하면 추천 근거가 보강됩니다.")
-
+    score += _stable_spread(scored)
     scored["recommendation_score"] = round(score, 1)
-    scored["recommendation_reasons"] = reasons[:6]
-    scored["recommendation_breakdown"] = breakdown
+    seen_reasons: set[str] = set()
+    display_reasons: list[str] = []
+    for points, reason in sorted(score_reasons, key=lambda item: item[0], reverse=True):
+        if reason in seen_reasons:
+            continue
+        seen_reasons.add(reason)
+        display_reasons.append(f"+{points:.1f}점 · {reason}")
+    scored["score_reasons"] = display_reasons[:6]
     scored["display_tags"] = safe_text(scored.get("categories")) or cat_detail or "-"
     return scored
 
@@ -221,4 +251,11 @@ def score_places(
     favorite_category_counts: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     scored = [score_place(row, preferences, favorite_category_counts) for row in rows]
-    return sorted(scored, key=lambda item: item.get("recommendation_score", 0), reverse=True)
+    return sorted(
+        scored,
+        key=lambda item: (
+            1 if _has_image(item) else 0,
+            item.get("recommendation_score", 0),
+        ),
+        reverse=True,
+    )

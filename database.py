@@ -693,23 +693,17 @@ def search_places(region_id: int | None, category_id: int | None, keyword: str =
           p.latitude,
           p.longitude,
           p.source_url,
-          p.average_rating,
           {optional_selects},
           (
             SELECT GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ')
             FROM place_categories pc
             JOIN categories c ON c.category_id = pc.category_id
             WHERE pc.place_id = p.place_id
-          ) AS categories,
-          (
-            SELECT COUNT(*)
-            FROM reviews rv
-            WHERE rv.place_id = p.place_id
-          ) AS review_count
+          ) AS categories
         FROM places p
         JOIN regions r ON r.region_id = p.region_id
         {where_sql}
-        ORDER BY p.average_rating DESC, p.place_name
+        ORDER BY p.place_name
         """,
         params,
     )
@@ -743,9 +737,12 @@ def search_places_for_planner(
         like = f"%{keyword}%"
         filters.append("(p.place_name LIKE %s OR p.overview LIKE %s OR p.address LIKE %s)")
         params.extend([like, like, like])
-    params.append(limit)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     optional_selects = ",\n          ".join(place_optional_selects("p"))
+    limit_value = int(limit or 0)
+    limit_sql = "LIMIT %s" if limit_value > 0 else ""
+    if limit_value > 0:
+        params.append(limit_value)
     return fetch_all(
         f"""
         SELECT
@@ -759,24 +756,18 @@ def search_places_for_planner(
           p.latitude,
           p.longitude,
           p.source_url,
-          p.average_rating,
           {optional_selects},
           (
             SELECT GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ')
             FROM place_categories pc
             JOIN categories c ON c.category_id = pc.category_id
             WHERE pc.place_id = p.place_id
-          ) AS categories,
-          (
-            SELECT COUNT(*)
-            FROM reviews rv
-            WHERE rv.place_id = p.place_id
-          ) AS review_count
+          ) AS categories
         FROM places p
         JOIN regions r ON r.region_id = p.region_id
         {where_sql}
-        ORDER BY p.average_rating DESC, p.place_name
-        LIMIT %s
+        ORDER BY p.place_name
+        {limit_sql}
         """,
         params,
     )
@@ -788,9 +779,12 @@ def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[d
     region_clause = region_match_sql("r", region_keyword, params)
     if region_clause:
         filters.append(region_clause)
-    params.append(limit)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     media_selects = ",\n          ".join(media_optional_selects("restaurants", "rt"))
+    limit_value = int(limit or 0)
+    limit_sql = "LIMIT %s" if limit_value > 0 else ""
+    if limit_value > 0:
+        params.append(limit_value)
     return fetch_all(
         f"""
         SELECT
@@ -804,7 +798,7 @@ def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[d
         JOIN regions r ON r.region_id = rt.region_id
         {where_sql}
         ORDER BY rt.restaurant_name
-        LIMIT %s
+        {limit_sql}
         """,
         params,
     )
@@ -816,23 +810,25 @@ def search_accommodations_for_region(region_keyword: str, limit: int = 6) -> lis
     region_clause = region_match_sql("r", region_keyword, params)
     if region_clause:
         filters.append(region_clause)
-    params.append(limit)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     media_selects = ",\n          ".join(media_optional_selects("accommodations", "a"))
+    limit_value = int(limit or 0)
+    limit_sql = "LIMIT %s" if limit_value > 0 else ""
+    if limit_value > 0:
+        params.append(limit_value)
     return fetch_all(
         f"""
         SELECT
           a.accommodation_id,
           a.accommodation_name,
           a.address,
-          a.phone,
           r.region_name,
           {media_selects}
         FROM accommodations a
         JOIN regions r ON r.region_id = a.region_id
         {where_sql}
         ORDER BY a.accommodation_name
-        LIMIT %s
+        {limit_sql}
         """,
         params,
     )
@@ -845,9 +841,12 @@ def search_festivals_for_region(region_keyword: str, limit: int = 6) -> list[dic
     if region_clause:
         filters.append(region_clause)
     # 날짜가 없는 축제도 정보 카드로 보여준다. 날짜가 있으면 종료되지 않은 축제를 우선 정렬한다.
-    params.append(limit)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     media_selects = ",\n          ".join(media_optional_selects("festivals", "f"))
+    limit_value = int(limit or 0)
+    limit_sql = "LIMIT %s" if limit_value > 0 else ""
+    if limit_value > 0:
+        params.append(limit_value)
     return fetch_all(
         f"""
         SELECT
@@ -868,7 +867,7 @@ def search_festivals_for_region(region_keyword: str, limit: int = 6) -> list[dic
           CASE WHEN f.end_date IS NOT NULL AND f.end_date < CURDATE() THEN 1 ELSE 0 END,
           COALESCE(f.start_date, '2999-12-31'),
           f.festival_name
-        LIMIT %s
+        {limit_sql}
         """,
         params,
     )
@@ -924,7 +923,7 @@ def add_review(member_id: int, place_id: int, rating: int, content: str) -> int:
 def get_favorites(member_id: int) -> list[dict[str, Any]]:
     return fetch_all(
         """
-        SELECT f.favorite_id, p.place_id, p.place_name, r.region_name, p.address, p.average_rating
+        SELECT f.favorite_id, p.place_id, p.place_name, r.region_name, p.address
         FROM favorites f
         JOIN places p ON p.place_id = f.place_id
         JOIN regions r ON r.region_id = p.region_id
@@ -1025,12 +1024,12 @@ def recommend_places(region_id: int, category_id: int | None, limit: int = 5) ->
     params.append(limit)
     return fetch_all(
         f"""
-        SELECT p.place_id, p.place_name, p.address, p.overview, p.average_rating
+        SELECT p.place_id, p.place_name, p.address, p.overview
         FROM places p
         {category_join}
         WHERE p.region_id = %s
         {category_filter}
-        ORDER BY p.average_rating DESC, p.place_name
+        ORDER BY p.place_name
         LIMIT %s
         """,
         params,

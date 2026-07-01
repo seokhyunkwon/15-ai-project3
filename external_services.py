@@ -802,3 +802,170 @@ def transport_estimate_with_gpt(origin: str, destination: str, travel_date: str,
     if not output_text:
         raise RuntimeError("OpenAI 응답에서 JSON 텍스트를 찾지 못했습니다.")
     return json.loads(output_text)
+
+
+def itinerary_from_kakao_with_gpt(
+    destination: str,
+    travel_date: str,
+    duration: str,
+    categories: list[str] | tuple[str, ...] | None,
+    kakao_places: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """카카오 장소 검색 결과를 기반으로 OpenAI가 이동 동선을 고려한 코스를 만든다."""
+    key = openai_api_key()
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY가 설정되어 있지 않습니다.")
+    if not kakao_places:
+        raise RuntimeError("코스를 만들 카카오 장소 결과가 없습니다.")
+
+    compact_places: list[dict[str, Any]] = []
+    for place in kakao_places[:10]:
+        compact_places.append(
+            {
+                "place_name": place.get("place_name"),
+                "category_name": place.get("category_name"),
+                "address": place.get("road_address_name") or place.get("address_name"),
+                "phone": place.get("phone"),
+                "place_url": place.get("place_url"),
+                "x": place.get("x"),
+                "y": place.get("y"),
+            }
+        )
+
+    def normalize_place_name(value: Any) -> str:
+        text = str(value or "").strip().lower()
+        for token in (" ", "\t", "\n", "-", "_", "·", ".", ",", "(", ")", "[", "]"):
+            text = text.replace(token, "")
+        return text
+
+    def dedupe_itinerary(data: dict[str, Any]) -> dict[str, Any]:
+        seen: set[str] = set()
+        for day in data.get("days") or []:
+            unique_stops: list[dict[str, Any]] = []
+            for stop in day.get("stops") or []:
+                key_name = normalize_place_name(stop.get("place_name"))
+                if not key_name or key_name in seen:
+                    continue
+                seen.add(key_name)
+                stop["order"] = len(unique_stops) + 1
+                unique_stops.append(stop)
+            day["stops"] = unique_stops
+        return data
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "destination": {"type": "string"},
+            "travel_date": {"type": "string"},
+            "duration": {"type": "string"},
+            "course_title": {"type": "string"},
+            "summary": {"type": "string"},
+            "days": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "day": {"type": "integer"},
+                        "theme": {"type": "string"},
+                        "stops": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "order": {"type": "integer"},
+                                    "time": {"type": "string"},
+                                    "place_name": {"type": "string"},
+                                    "address": {"type": "string"},
+                                    "kakao_url": {"type": "string"},
+                                    "reason": {"type": "string"},
+                                    "move_tip": {"type": "string"},
+                                },
+                                "required": [
+                                    "order",
+                                    "time",
+                                    "place_name",
+                                    "address",
+                                    "kakao_url",
+                                    "reason",
+                                    "move_tip",
+                                ],
+                            },
+                        },
+                    },
+                    "required": ["day", "theme", "stops"],
+                },
+            },
+            "notes": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["destination", "travel_date", "duration", "course_title", "summary", "days", "notes"],
+    }
+
+    prompt = f"""
+카카오맵에서 확보한 장소의 주소, 좌표, 카카오맵 링크를 위치 정보로 활용해서 한국 여행 코스를 구성해줘.
+여행지: {destination}
+날짜: {travel_date}
+기간: {duration}
+선호 카테고리: {", ".join(categories or []) or "특별히 없음"}
+
+카카오맵 위치 정보 JSON:
+{json.dumps(compact_places, ensure_ascii=False)}
+
+조건:
+- 해당 지역의 인기 관광지를 중심으로 코스를 추천해줘.
+- 아래 위치 정보에 있는 장소를 우선 사용하고, 장소가 부족할 때만 해당 지역의 대표 관광지를 보완해줘.
+- 같은 장소는 전체 일정에서 딱 한 번만 사용해. 날짜가 달라도 같은 관광지를 반복 방문하게 만들지 마.
+- 예: 경복궁을 1일차에 넣었다면 2일차, 3일차, 4일차에는 절대 다시 넣지 마.
+- 궁궐, 시장, 전망대, 공원, 거리, 박물관처럼 성격이 다른 장소를 섞어줘.
+- 하루 3~4곳 안에서 간결하게 구성해줘.
+- 좌표와 주소를 보고 왕복/역주행이 심하지 않도록 가까운 동선끼리 묶어줘.
+- 숙소 체크인/식사/휴식 흐름이 자연스럽게 오전, 점심, 오후, 저녁 순서가 되게 해줘.
+- 카카오 URL이 있으면 kakao_url에 그대로 넣어줘. 보완한 장소처럼 URL이 없으면 빈 문자열로 둬.
+- 사용자가 바로 읽는 화면이므로 내부 점수, API 설명, 관리자용 문구는 쓰지 마.
+- JSON 스키마를 정확히 지켜줘.
+""".strip()
+
+    request_payload = {
+        "model": openai_model(),
+        "input": prompt,
+        "max_output_tokens": 1800,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "kakao_itinerary",
+                "schema": schema,
+                "strict": True,
+            }
+        },
+    }
+    response = None
+    for attempt in range(2):
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=request_payload,
+                timeout=(10, 75),
+            )
+            break
+        except requests.exceptions.Timeout as exc:
+            if attempt == 1:
+                raise RuntimeError("OpenAI 응답이 지연되고 있습니다. 잠시 후 다시 시도하거나 검색어를 더 구체적으로 줄여주세요.") from exc
+    if response is None:
+        raise RuntimeError("OpenAI 응답을 받지 못했습니다.")
+    response.raise_for_status()
+    payload = response.json()
+
+    text_parts: list[str] = []
+    for item in payload.get("output") or []:
+        for content in item.get("content") or []:
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                text_parts.append(content["text"])
+    output_text = "\n".join(text_parts).strip()
+    if not output_text and payload.get("output_text"):
+        output_text = str(payload.get("output_text"))
+    if not output_text:
+        raise RuntimeError("OpenAI 응답에서 코스 JSON을 찾지 못했습니다.")
+    return dedupe_itinerary(json.loads(output_text))
