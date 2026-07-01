@@ -409,7 +409,7 @@ def test_connection() -> tuple[bool, str]:
 def authenticate(username: str, password: str) -> dict[str, Any] | None:
     return fetch_one(
         """
-        SELECT member_id, username, name, email, role, preferred_region_id
+        SELECT member_id, username, name, email, role
         FROM members
         WHERE username = %s AND password_hash = %s
         """,
@@ -420,7 +420,7 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
 def get_member_by_username(username: str) -> dict[str, Any] | None:
     return fetch_one(
         """
-        SELECT member_id, username, name, email, role, preferred_region_id
+        SELECT member_id, username, name, email, role
         FROM members
         WHERE username = %s
         """,
@@ -431,7 +431,7 @@ def get_member_by_username(username: str) -> dict[str, Any] | None:
 def get_member_by_id(member_id: int) -> dict[str, Any] | None:
     return fetch_one(
         """
-        SELECT member_id, username, name, email, role, preferred_region_id
+        SELECT member_id, username, name, email, role
         FROM members
         WHERE member_id = %s
         """,
@@ -439,13 +439,13 @@ def get_member_by_id(member_id: int) -> dict[str, Any] | None:
     )
 
 
-def create_member(username: str, password: str, name: str, email: str, preferred_region_id: int | None) -> int:
+def create_member(username: str, password: str, name: str, email: str| None) -> int:
     return execute(
         """
-        INSERT INTO members (username, password_hash, name, email, preferred_region_id)
+        INSERT INTO members (username, password_hash, name, email)
         VALUES (%s, %s, %s, %s, %s)
         """,
-        (username, hash_password(password), name, email, preferred_region_id),
+        (username, hash_password(password), name, email),
     )
 
 

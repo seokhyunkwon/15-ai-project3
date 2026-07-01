@@ -1805,7 +1805,7 @@ def render_live_api_tabs(result: dict[str, Any]) -> None:
 
     with tab_transport:
         cols = st.columns([1, 1, 0.55])
-        origin = cols[0].text_input("출발지", value="서울역", key="transport_origin")
+        origin = cols[0].text_input("출발지", value="서울", key="transport_origin")
         destination_text = cols[1].text_input("도착지", value=destination if destination != "전국" else "", key="transport_destination")
         people = cols[2].number_input("인원", min_value=1, max_value=10, value=2, step=1, key="transport_people")
         if st.button("교통비 보기", type="primary", key="transport_live_search"):
@@ -1823,10 +1823,52 @@ def render_live_api_tabs(result: dict[str, Any]) -> None:
         if estimate:
             for option in estimate.get("options") or []:
                 with st.container(border=True):
-                    cols = st.columns([1.0, 1.0, 2.2])
+                    cols = st.columns([1.0, 1.35, 2.1])
+
                     cols[0].subheader(option.get("mode") or "교통편")
-                    cols[1].metric("예상 시간", f"{option.get('estimated_time_minutes', '-')}분")
-                    cols[1].metric("예상 금액", f"{_money(option.get('estimated_cost_min'))} ~ {_money(option.get('estimated_cost_max'))}")
+
+                    cols[1].markdown(
+                        f"""
+                        <div style="
+                            border: 1px solid #e5e7eb;
+                            border-radius: 12px;
+                            padding: 14px 18px;
+                            margin-bottom: 14px;
+                            background: #ffffff;
+                        ">
+                            <div style="font-size:14px; color:#64748b; font-weight:600;">예상 시간</div>
+                            <div style="font-size:34px; color:#64748b; font-weight:800;">
+                                {option.get('estimated_time_minutes', '-')}분
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    cols[1].markdown(
+                        f"""
+                        <div style="
+                            border: 1px solid #e5e7eb;
+                            border-radius: 12px;
+                            padding: 14px 18px;
+                            background: #ffffff;
+                        ">
+                            <div style="font-size:14px; color:#64748b; font-weight:600;">예상 금액</div>
+                            <div style="
+                                font-size:27px;
+                                color:#64748b;
+                                font-weight:800;
+                                white-space: normal;
+                                word-break: keep-all;
+                                line-height: 1.25;
+                            ">
+                                {_money(option.get('estimated_cost_min'))} ~ {_money(option.get('estimated_cost_max'))}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
                     cols[2].write(option.get("route_summary") or "-")
         elif not api_status.get("openai"):
             st.info("비용 계산 키를 설정하면 교통편별 예상 금액을 볼 수 있습니다.")
@@ -1840,8 +1882,6 @@ def render_place_card(row: dict[str, Any], key_prefix: str, favorite_ids: set[in
         map_url = naver_map_url(name, row.get("address"))
         top[1].markdown(f"### [{name}]({map_url})")
         top[1].caption(row.get("region_name") or "-")
-        if row.get("address"):
-            top[1].write(row.get("address"))
         top[1].write(row.get("overview") or "소개 정보가 없습니다.")
         render_favorite_heart(top[2], row, favorite_ids, key_prefix)
         top[2].metric("추천 점수", f"{recommender.safe_float(row.get('recommendation_score')):.1f}")
