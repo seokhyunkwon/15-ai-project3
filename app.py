@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 import streamlit as st
+import streamlit.components.v1 as components
 from mysql.connector import Error
 
 import database as db
@@ -213,6 +214,171 @@ def inject_design() -> None:
             color: #fff;
           }
 
+          div[data-testid="stDialog"] div[role="dialog"] {
+            border-radius: 24px !important;
+            border: 1px solid rgba(226,232,240,0.95) !important;
+            box-shadow: 0 28px 80px rgba(15,23,42,0.22) !important;
+            overflow: visible;
+          }
+
+          div[data-testid="stDialog"] div[role="dialog"] > div {
+            padding: 30px 38px 32px !important;
+          }
+
+          div[data-testid="stDialog"] [data-testid="stVerticalBlock"] {
+            gap: 14px !important;
+          }
+
+          div[data-testid="stDialog"] [data-testid="stElementContainer"] {
+            margin: 0 !important;
+          }
+
+          div[data-testid="stDialog"] h1:not(.auth-title),
+          div[data-testid="stDialog"] h2:not(.auth-title),
+          div[data-testid="stDialog"] h3:not(.auth-title) {
+            margin: 0 44px 4px 0 !important;
+            line-height: 1.25 !important;
+            letter-spacing: 0 !important;
+            color: var(--ink) !important;
+            word-break: keep-all;
+          }
+
+          .auth-card {
+            margin: 0 0 20px;
+            padding: 26px 28px 24px;
+            border: 1px solid #FFE1E7;
+            border-radius: 18px;
+            background:
+              linear-gradient(180deg, #fff 0%, #fff 68%, #FFF7F8 100%);
+          }
+
+          .auth-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #FFF1F3;
+            color: var(--blue-dark);
+            font-size: 0.78rem;
+            font-weight: 900;
+          }
+
+          .auth-title {
+            margin: 16px 0 8px;
+            color: var(--ink);
+            font-size: clamp(1.45rem, 3vw, 1.85rem);
+            line-height: 1.24;
+            font-weight: 900;
+            letter-spacing: 0;
+            word-break: keep-all;
+          }
+
+          .auth-copy {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.65;
+            word-break: keep-all;
+          }
+
+          div[data-testid="stDialog"] label {
+            display: block;
+            margin: 0 0 8px;
+            color: var(--gray-700) !important;
+            font-weight: 800 !important;
+          }
+
+          div[data-testid="stDialog"] div[data-testid="stTextInput"] {
+            margin-bottom: 14px;
+          }
+
+          div[data-testid="stDialog"] div[data-testid="InputInstructions"] {
+            display: none !important;
+          }
+
+          div[data-testid="stDialog"] div[data-testid="stForm"] {
+            border: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+          }
+
+          div[data-testid="stDialog"] form,
+          div[data-testid="stDialog"] form > div {
+            border: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+          }
+
+          div[data-testid="stDialog"] div[data-baseweb="input"] {
+            border-radius: 12px !important;
+            background: #F8FAFC !important;
+            border-color: #E2E8F0 !important;
+          }
+
+          div[data-testid="stDialog"] input {
+            min-height: 44px;
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+          }
+
+          div[data-testid="stDialog"] .stButton > button,
+          div[data-testid="stDialog"] div[data-testid="stFormSubmitButton"] > button {
+            border-radius: 12px;
+            min-height: 48px;
+            justify-content: center;
+            margin-top: 4px;
+          }
+
+          div[data-testid="stDialog"] div[data-testid="stFormSubmitButton"] > button[kind="primary"] {
+            background: var(--blue) !important;
+            border-color: var(--blue) !important;
+            color: #fff !important;
+          }
+
+          .auth-alt {
+            margin: 18px 0 0;
+            padding-top: 16px;
+            border-top: 1px solid #EEF2F7;
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: center;
+          }
+
+          .auth-alt a {
+            color: var(--blue-dark);
+            font-weight: 900;
+            text-decoration: none;
+          }
+
+          @media (max-width: 767px) {
+            div[data-testid="stDialog"] div[role="dialog"] {
+              width: min(calc(100vw - 24px), 560px) !important;
+            }
+
+            div[data-testid="stDialog"] div[role="dialog"] > div {
+              padding: 26px 22px 28px !important;
+            }
+
+            .auth-card {
+              margin-top: 0;
+              padding: 22px 20px;
+              border-radius: 16px;
+            }
+
+            .auth-copy {
+              line-height: 1.55;
+            }
+          }
+
           .region-picker {
             display: grid;
             grid-template-columns: minmax(320px, 0.42fr) minmax(420px, 1fr);
@@ -399,9 +565,85 @@ def inject_design() -> None:
             z-index: 1;
           }
 
+          .hero-egg-hitbox {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            cursor: default;
+          }
+
+          .hero-easter-plane {
+            position: absolute;
+            left: -18vw;
+            top: 42%;
+            z-index: 5;
+            opacity: 0;
+            pointer-events: none;
+            transform: translate3d(0,0,0) rotate(8deg) scale(0.9);
+            filter: drop-shadow(0 18px 18px rgba(15, 23, 42, 0.28));
+          }
+
+          .hero-easter-plane svg {
+            width: clamp(92px, 11vw, 180px);
+            height: auto;
+            display: block;
+          }
+
+          .hero-easter-wake {
+            position: absolute;
+            left: -30vw;
+            top: 48%;
+            width: 30vw;
+            height: 3px;
+            z-index: 4;
+            opacity: 0;
+            pointer-events: none;
+            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.9), rgba(59,130,246,.45));
+            filter: blur(.5px);
+          }
+
+          .hero-shell.egg-active .hero-easter-plane {
+            animation: traveldb-plane-out 1.05s cubic-bezier(.16,.84,.27,1) forwards,
+                       traveldb-plane-back 1.35s cubic-bezier(.18,.82,.2,1) 1.15s forwards;
+          }
+
+          .hero-shell.egg-active .hero-easter-wake {
+            animation: traveldb-wake-out 1.05s cubic-bezier(.16,.84,.27,1) forwards,
+                       traveldb-wake-back 1.35s cubic-bezier(.18,.82,.2,1) 1.15s forwards;
+          }
+
+          @keyframes traveldb-plane-out {
+            0% { opacity: 0; transform: translate3d(-18vw, 18vh, 0) rotate(10deg) scale(.72); }
+            12% { opacity: 1; }
+            58% { opacity: 1; transform: translate3d(54vw, -6vh, 0) rotate(4deg) scale(1.05); }
+            100% { opacity: 0; transform: translate3d(128vw, -34vh, 0) rotate(-6deg) scale(1.34); }
+          }
+
+          @keyframes traveldb-plane-back {
+            0% { opacity: 0; transform: translate3d(120vw, -28vh, 0) rotate(188deg) scale(1.18); }
+            16% { opacity: 1; }
+            72% { opacity: 1; transform: translate3d(36vw, 10vh, 0) rotate(181deg) scale(.98); }
+            100% { opacity: 0; transform: translate3d(-28vw, 24vh, 0) rotate(176deg) scale(.75); }
+          }
+
+          @keyframes traveldb-wake-out {
+            0% { opacity: 0; transform: translate3d(-18vw, 18vh, 0) rotate(-13deg) scaleX(.45); }
+            16% { opacity: .85; }
+            100% { opacity: 0; transform: translate3d(116vw, -31vh, 0) rotate(-13deg) scaleX(1.15); }
+          }
+
+          @keyframes traveldb-wake-back {
+            0% { opacity: 0; transform: translate3d(120vw, -26vh, 0) rotate(166deg) scaleX(.55); }
+            18% { opacity: .7; }
+            100% { opacity: 0; transform: translate3d(-34vw, 24vh, 0) rotate(166deg) scaleX(1.1); }
+          }
+
           .hero-nav {
             position: relative;
-            z-index: 2;
+            z-index: 3;
             max-width: min(960px, calc(100vw - clamp(32px, 18vw, 430px)));
             margin: 0 auto;
             padding: 0;
@@ -478,7 +720,7 @@ def inject_design() -> None:
 
           .hero-main {
             position: relative;
-            z-index: 2;
+            z-index: 3;
             max-width: min(960px, calc(100vw - clamp(32px, 18vw, 430px)));
             min-height: calc(100vh - 92px);
             margin: 0 auto;
@@ -790,6 +1032,7 @@ def inject_design() -> None:
 def init_state() -> None:
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("trip_result", None)
+    st.session_state.setdefault("auth_mode", None)
 
 
 def _login_secret() -> str:
@@ -836,6 +1079,7 @@ def restore_login() -> None:
 
 def persist_login(user: dict[str, Any]) -> None:
     st.session_state.user = user
+    st.session_state.auth_mode = None
     try:
         st.query_params.clear()
         st.query_params["session"] = _login_token(int(user["member_id"]))
@@ -845,6 +1089,7 @@ def persist_login(user: dict[str, Any]) -> None:
 
 def clear_login() -> None:
     st.session_state.user = None
+    st.session_state.auth_mode = None
     try:
         st.query_params.clear()
     except Exception:
@@ -867,8 +1112,10 @@ def href_for(**params: str) -> str:
 
 
 def close_auth_modal() -> None:
+    st.session_state.auth_mode = None
     try:
-        st.query_params.clear()
+        if query_value("auth"):
+            del st.query_params["auth"]
     except Exception:
         pass
     st.rerun()
@@ -948,28 +1195,59 @@ def render_favorite_heart(target, row: dict[str, Any], favorite_ids: set[int], k
         st.rerun()
 
 def render_login_dialog() -> None:
-    st.write("여행지 검색과 여행 보조 정보는 로그인 후 이용할 수 있습니다.")
-    username = st.text_input("아이디", value="", key="login_username")
-    password = st.text_input("비밀번호", value="", type="password", key="login_password")
-    cols = st.columns([1, 1])
-    if cols[0].button("로그인", type="primary", use_container_width=True, key="login_submit"):
+    st.markdown(
+        """
+        <div class="auth-card">
+          <div class="auth-kicker">TRAVELDB ACCOUNT</div>
+          <h2 class="auth-title">다시 여행을 이어가요</h2>
+          <p class="auth-copy">로그인하면 지역 검색, AI 추천코스, 찜한 여행지를 이어서 사용할 수 있습니다.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input("아이디", value="", placeholder="아이디를 입력하세요", key="login_username")
+        password = st.text_input("비밀번호", value="", placeholder="비밀번호를 입력하세요", type="password", key="login_password")
+        cols = st.columns([1, 1])
+        submitted = cols[0].form_submit_button("로그인", type="primary", use_container_width=True)
+        close_clicked = cols[1].form_submit_button("닫기", use_container_width=True)
+    if submitted:
         user = db.authenticate(username, password)
         if user:
             persist_login(user)
             st.rerun()
-        st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
-    if cols[1].button("닫기", use_container_width=True, key="login_close"):
+        else:
+            st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
+    if close_clicked:
         close_auth_modal()
+    st.markdown(
+        '<div class="auth-alt">아직 계정이 없다면 아래 회원가입을 눌러주세요.</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("회원가입으로 이동", use_container_width=True, key="login_to_signup"):
+        go_auth("signup")
 
 
 def render_signup_dialog() -> None:
-    st.write("회원가입 후 여행 조건에 맞는 추천 결과를 확인할 수 있습니다.")
-    cols = st.columns(2)
-    new_username = cols[0].text_input("아이디", key="signup_username")
-    name = cols[1].text_input("이름", key="signup_name")
-    new_password = st.text_input("비밀번호", type="password", key="signup_password")
-    btn_cols = st.columns([1, 1])
-    if btn_cols[0].button("회원가입", type="primary", use_container_width=True, key="signup_submit"):
+    st.markdown(
+        """
+        <div class="auth-card">
+          <div class="auth-kicker">JOIN TRAVELDB</div>
+          <h2 class="auth-title">여행 취향을 저장해요</h2>
+          <p class="auth-copy">간단한 계정만 만들면 찜한 장소와 추천 결과를 더 편하게 관리할 수 있습니다.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("signup_form", clear_on_submit=False):
+        cols = st.columns(2)
+        new_username = cols[0].text_input("아이디", placeholder="로그인에 사용할 아이디", key="signup_username")
+        name = cols[1].text_input("이름", placeholder="이름", key="signup_name")
+        new_password = st.text_input("비밀번호", placeholder="비밀번호", type="password", key="signup_password")
+        btn_cols = st.columns([1, 1])
+        submitted = btn_cols[0].form_submit_button("회원가입", type="primary", use_container_width=True)
+        close_clicked = btn_cols[1].form_submit_button("닫기", use_container_width=True)
+    if submitted:
         clean_username = str(new_username or "").strip()
         clean_name = str(name or "").strip()
         if not all([clean_username, clean_name, new_password]):
@@ -981,8 +1259,14 @@ def render_signup_dialog() -> None:
             st.success("회원가입이 완료되었습니다. 이제 로그인해주세요.")
         except Error as exc:
             st.error(f"회원가입 실패: {exc}")
-    if btn_cols[1].button("닫기", use_container_width=True, key="signup_close"):
+    if close_clicked:
         close_auth_modal()
+    st.markdown(
+        '<div class="auth-alt">이미 계정이 있다면 아래 로그인을 눌러주세요.</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("로그인으로 이동", use_container_width=True, key="signup_to_login"):
+        go_auth("login")
 
 
 if hasattr(st, "dialog"):
@@ -994,7 +1278,9 @@ else:
 
 
 def render_account_panel() -> None:
-    mode = query_value("auth")
+    mode = st.session_state.get("auth_mode") or query_value("auth")
+    if mode in {"login", "signup"}:
+        st.session_state.auth_mode = mode
     if mode not in {"login", "signup"} or st.session_state.user:
         return
     if mode == "login":
@@ -1004,9 +1290,12 @@ def render_account_panel() -> None:
 
 
 def go_auth(mode: str) -> None:
+    if mode not in {"login", "signup"}:
+        return
+    st.session_state.auth_mode = mode
     try:
-        st.query_params.clear()
-        st.query_params["auth"] = mode
+        if query_value("auth"):
+            del st.query_params["auth"]
     except Exception:
         pass
     st.rerun()
@@ -1018,7 +1307,7 @@ def render_login_required() -> None:
         <div class="section-shell">
           <div class="section-kicker">LOGIN REQUIRED</div>
           <h2 class="section-title">로그인 후 이용할 수 있습니다</h2>
-          <p>여행지 검색, 여행 보조 정보, 찜하기 기능은 로그인한 회원에게만 제공됩니다. 로그인과 회원가입은 화면 우측 상단에서 할 수 있습니다.</p>
+          <p>여행지 검색 기능은 로그인한 회원에게만 제공됩니다. 로그인과 회원가입은 화면 우측 상단에서 할 수 있습니다.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1031,12 +1320,23 @@ def render_hero() -> None:
         auth_html = f'<span class="nav-user">{user_name}님</span><a target="_self" href="{href_for(logout="1")}">로그아웃</a>' 
     else:
         auth_html = f'<a target="_self" href="{href_for(auth="login")}">로그인</a><a target="_self" href="{href_for(auth="signup")}">회원가입</a>' 
+    egg_name = str(query_value("egg_name") or "").strip().lower()
+    egg_class = " egg-active" if egg_name in {"권석현", "rnjstjrgus"} else ""
     st.markdown(
         f"""
-        <section class="hero-shell">
+        <section class="hero-shell{egg_class}">
           <video class="hero-photo" autoplay muted loop playsinline
             src="https://plugin-assets.open-design.ai/plugins/skyelite-private-jets/hf_20260328_091828_e240eb17-6edc-4129-ad9d-98678e3fd238-86655b.mp4">
           </video>
+          <div class="hero-egg-hitbox" aria-hidden="true"></div>
+          <div class="hero-easter-wake"></div>
+          <div class="hero-easter-plane" aria-hidden="true">
+            <svg viewBox="0 0 240 110">
+              <path d="M224 51c9 5 9 11 0 16l-45 9-31 28c-4 4-11 2-11-4l9-23-65 13-21 16c-4 3-10 1-10-4l7-17-32-1c-12 0-20-10-8-15l41-17-41-17c-12-5-4-15 8-15l32-1-7-17c0-5 6-7 10-4l21 16 65 13-9-23c0-6 7-8 11-4l31 28 45 9z" fill="#ffffff" stroke="#0b5de8" stroke-width="7" stroke-linejoin="round"/>
+              <path d="M79 52h90" stroke="#0b5de8" stroke-width="8" stroke-linecap="round"/>
+              <circle cx="184" cy="58" r="6" fill="#0b5de8"/>
+            </svg>
+          </div>
           <div class="hero-nav">
             <div class="nav-left">
               <div class="brand"><span class="brand-mark">T</span>TravelDB</div>
@@ -1066,6 +1366,167 @@ def render_hero() -> None:
         </section>
         """,
         unsafe_allow_html=True,
+    )
+    render_plane_easter_egg()
+
+
+def render_plane_easter_egg() -> None:
+    components.html(
+        """
+        <script>
+        (function () {
+          const doc = window.parent.document;
+          const win = window.parent;
+          if (win.__traveldbPlaneEggInstalled) return;
+          win.__traveldbPlaneEggInstalled = true;
+
+          const style = doc.createElement("style");
+          style.textContent = `
+            .traveldb-easter-plane {
+              position: fixed;
+              left: -18vw;
+              top: 38vh;
+              z-index: 999999;
+              pointer-events: none;
+              opacity: 0;
+              transform: translate3d(0,0,0) rotate(8deg) scale(0.9);
+              filter: drop-shadow(0 18px 18px rgba(15, 23, 42, 0.28));
+            }
+
+            .traveldb-easter-plane svg {
+              width: clamp(92px, 11vw, 180px);
+              height: auto;
+              display: block;
+            }
+
+            .traveldb-easter-plane.is-flying {
+              animation: traveldb-plane-out 1.05s cubic-bezier(.16,.84,.27,1) forwards,
+                         traveldb-plane-back 1.35s cubic-bezier(.18,.82,.2,1) 1.15s forwards;
+            }
+
+            .traveldb-easter-wake {
+              position: fixed;
+              left: -30vw;
+              top: 45vh;
+              width: 30vw;
+              height: 3px;
+              z-index: 999998;
+              pointer-events: none;
+              opacity: 0;
+              background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.9), rgba(59,130,246,.45));
+              filter: blur(.5px);
+            }
+
+            .traveldb-easter-wake.is-flying {
+              animation: traveldb-wake-out 1.05s cubic-bezier(.16,.84,.27,1) forwards,
+                         traveldb-wake-back 1.35s cubic-bezier(.18,.82,.2,1) 1.15s forwards;
+            }
+
+            @keyframes traveldb-plane-out {
+              0% { opacity: 0; transform: translate3d(-18vw, 18vh, 0) rotate(10deg) scale(.72); }
+              12% { opacity: 1; }
+              58% { opacity: 1; transform: translate3d(54vw, -6vh, 0) rotate(4deg) scale(1.05); }
+              100% { opacity: 0; transform: translate3d(128vw, -34vh, 0) rotate(-6deg) scale(1.34); }
+            }
+
+            @keyframes traveldb-plane-back {
+              0% { opacity: 0; transform: translate3d(120vw, -28vh, 0) rotate(188deg) scale(1.18); }
+              16% { opacity: 1; }
+              72% { opacity: 1; transform: translate3d(36vw, 10vh, 0) rotate(181deg) scale(.98); }
+              100% { opacity: 0; transform: translate3d(-28vw, 24vh, 0) rotate(176deg) scale(.75); }
+            }
+
+            @keyframes traveldb-wake-out {
+              0% { opacity: 0; transform: translate3d(-18vw, 18vh, 0) rotate(-13deg) scaleX(.45); }
+              16% { opacity: .85; }
+              100% { opacity: 0; transform: translate3d(116vw, -31vh, 0) rotate(-13deg) scaleX(1.15); }
+            }
+
+            @keyframes traveldb-wake-back {
+              0% { opacity: 0; transform: translate3d(120vw, -26vh, 0) rotate(166deg) scaleX(.55); }
+              18% { opacity: .7; }
+              100% { opacity: 0; transform: translate3d(-34vw, 24vh, 0) rotate(166deg) scaleX(1.1); }
+            }
+          `;
+          doc.head.appendChild(style);
+
+          const plane = doc.createElement("div");
+          plane.className = "traveldb-easter-plane";
+          plane.innerHTML = `
+            <svg viewBox="0 0 240 110" aria-hidden="true">
+              <path d="M224 51c9 5 9 11 0 16l-45 9-31 28c-4 4-11 2-11-4l9-23-65 13-21 16c-4 3-10 1-10-4l7-17-32-1c-12 0-20-10-8-15l41-17-41-17c-12-5-4-15 8-15l32-1-7-17c0-5 6-7 10-4l21 16 65 13-9-23c0-6 7-8 11-4l31 28 45 9z" fill="#ffffff" stroke="#0b5de8" stroke-width="7" stroke-linejoin="round"/>
+              <path d="M79 52h90" stroke="#0b5de8" stroke-width="8" stroke-linecap="round"/>
+              <circle cx="184" cy="58" r="6" fill="#0b5de8"/>
+            </svg>
+          `;
+          const wake = doc.createElement("div");
+          wake.className = "traveldb-easter-wake";
+          doc.body.appendChild(wake);
+          doc.body.appendChild(plane);
+
+          let armed = false;
+          let buffer = "";
+          let armTimer = 0;
+          const targets = ["\uad8c\uc11d\ud604", "rnjstjrgus"];
+
+          function isEditable(target) {
+            const tag = (target && target.tagName || "").toLowerCase();
+            return target && (target.isContentEditable || ["input", "textarea", "select"].includes(tag));
+          }
+
+          function arm() {
+            armed = true;
+            buffer = "";
+            win.clearTimeout(armTimer);
+            armTimer = win.setTimeout(() => {
+              armed = false;
+              buffer = "";
+            }, 9000);
+          }
+
+          function fly() {
+            plane.classList.remove("is-flying");
+            wake.classList.remove("is-flying");
+            void plane.offsetWidth;
+            plane.classList.add("is-flying");
+            wake.classList.add("is-flying");
+            win.setTimeout(() => {
+              plane.classList.remove("is-flying");
+              wake.classList.remove("is-flying");
+            }, 2700);
+          }
+
+          doc.addEventListener("click", function (event) {
+            const hero = event.target && event.target.closest && event.target.closest(".hero-shell");
+            if (!hero || event.target.closest("a,button,input,textarea,select,[role='button']")) return;
+            arm();
+          }, true);
+
+          doc.addEventListener("keydown", function (event) {
+            if (!armed || isEditable(event.target)) return;
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              const normalized = buffer.trim().toLowerCase();
+              if (targets.includes(normalized)) fly();
+              armed = false;
+              buffer = "";
+              win.clearTimeout(armTimer);
+              return;
+            }
+            if (event.key === "Backspace") {
+              buffer = buffer.slice(0, -1);
+              return;
+            }
+            if (event.key && event.key.length === 1) {
+              buffer = (buffer + event.key).slice(-24);
+            }
+          }, true);
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
     )
 
 
@@ -1189,14 +1650,22 @@ def format_count(count: int | None) -> str:
     return f"({int(count or 0):,})"
 
 
+def invalidate_trip_result() -> None:
+    st.session_state.trip_result = None
+    for key in ("places_page", "restaurants_page", "accommodations_page", "festivals_page"):
+        st.session_state[key] = 1
+
+
 def set_region_major(major_region: str, default_minor_value: str) -> None:
     st.session_state["region_major"] = major_region
     st.session_state[f"region_minor_value_{major_region}"] = default_minor_value
+    invalidate_trip_result()
 
 
 def set_region_minor(major_region: str, minor_value: str) -> None:
     st.session_state["region_major"] = major_region
     st.session_state[f"region_minor_value_{major_region}"] = minor_value
+    invalidate_trip_result()
 
 
 def sync_region_selection(hierarchy: dict[str, list[dict[str, str]]]) -> tuple[str, dict[str, str]]:
@@ -1371,6 +1840,8 @@ def render_search_form() -> dict[str, Any] | None:
         major_region, selected_region = render_region_picker(hierarchy)
         destination = selected_region["value"]
         destination_label = selected_region["display"]
+        st.session_state["current_search_destination"] = destination
+        st.session_state["current_search_destination_label"] = destination_label
         top = st.columns(2)
         start_date = top[0].date_input("출발일", value=default_start)
         end_date = top[1].date_input("돌아오는 날", value=default_end)
@@ -1392,6 +1863,7 @@ def render_search_form() -> dict[str, Any] | None:
 
     return {
         "destination": destination,
+        "filter_destination": destination,
         "start_date": start_date,
         "end_date": end_date,
         "categories": categories,
@@ -1423,6 +1895,69 @@ def favorite_bias() -> dict[str, int]:
         return {}
 
 
+def filter_rows_for_destination(rows: list[dict[str, Any]], destination: str, fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    """DB에 잘못 섞인 타지역 행이 화면에 노출되지 않도록 최종 방어 필터를 적용한다."""
+    if not destination or destination == "전국":
+        return rows
+    try:
+        candidates = db.region_keyword_candidates(destination)
+    except Exception:
+        candidates = [destination]
+    tokens = [str(token).strip() for token in candidates if str(token or "").strip() and str(token).strip() != "전국"]
+    if not tokens:
+        return rows
+
+    def token_matches(text: str, token: str) -> bool:
+        if not text or not token:
+            return False
+        if len(token) <= 2:
+            return (
+                text == token
+                or text.startswith(f"{token} ")
+                or text.startswith(f"{token}광역시")
+                or text.startswith(f"{token}특별시")
+                or text.startswith(f"{token}특별자치시")
+                or text.startswith(f"{token}특별자치도")
+            )
+        return token in text
+
+    filtered: list[dict[str, Any]] = []
+    for row in rows:
+        values = [str(row.get(field) or "").strip() for field in fields]
+        haystack = " ".join(values)
+        if any(token_matches(value, token) for token in tokens for value in values) or any(
+            len(token) > 2 and token in haystack for token in tokens
+        ):
+            filtered.append(row)
+    return filtered
+
+
+def result_destination(result: dict[str, Any]) -> str:
+    search = result.get("search") if isinstance(result, dict) else {}
+    if not isinstance(search, dict):
+        return ""
+    return str(search.get("destination") or "")
+
+
+def active_filter_destination(result: dict[str, Any]) -> str:
+    current = str(st.session_state.get("current_search_destination") or "").strip()
+    search = result.get("search") if isinstance(result, dict) else {}
+    filter_destination = ""
+    if isinstance(search, dict):
+        filter_destination = str(search.get("filter_destination") or "").strip()
+    return current or filter_destination or result_destination(result)
+
+
+def sort_media_first(rows: list[dict[str, Any]], name_key: str) -> list[dict[str, Any]]:
+    return sorted(
+        rows,
+        key=lambda item: (
+            0 if image_source(item) else 1,
+            str(item.get(name_key) or ""),
+        ),
+    )
+
+
 def build_trip_result(search: dict[str, Any]) -> dict[str, Any]:
     if not st.session_state.get("user"):
         raise PermissionError("로그인 후 이용할 수 있습니다.")
@@ -1449,9 +1984,21 @@ def build_trip_result(search: dict[str, Any]) -> dict[str, Any]:
         favorite_place_ids = db.favorite_place_ids(st.session_state.user["member_id"])
     except Error:
         favorite_place_ids = set()
-    restaurants = db.search_restaurants_for_region(search["destination"], limit=0)
-    accommodations = db.search_accommodations_for_region(search["destination"], limit=0)
-    festivals = db.search_festivals_for_region(search["destination"], limit=0)
+    restaurants = filter_rows_for_destination(
+        db.search_restaurants_for_region(search["destination"], limit=0),
+        search["destination"],
+        ("region_name", "address"),
+    )
+    accommodations = filter_rows_for_destination(
+        db.search_accommodations_for_region(search["destination"], limit=0),
+        search["destination"],
+        ("region_name", "address"),
+    )
+    festivals = filter_rows_for_destination(
+        db.search_festivals_for_region(search["destination"], limit=0),
+        search["destination"],
+        ("region_name", "event_place", "overview"),
+    )
     return {
         "search": search,
         "preferences": preferences,
@@ -1903,7 +2450,12 @@ def render_recommendations(result: dict[str, Any]) -> None:
 
 
 def render_accommodations(result: dict[str, Any]) -> None:
-    accommodations = result["accommodations"]
+    accommodations = filter_rows_for_destination(
+        result.get("accommodations") or [],
+        active_filter_destination(result),
+        ("region_name", "address"),
+    )
+    accommodations = sort_media_first(accommodations, "accommodation_name")
     if not accommodations:
         st.info("해당 지역에는 아직 준비된 숙소가 없습니다.")
         return
@@ -1920,7 +2472,12 @@ def render_accommodations(result: dict[str, Any]) -> None:
 
 
 def render_restaurants(result: dict[str, Any]) -> None:
-    restaurants = result["restaurants"]
+    restaurants = filter_rows_for_destination(
+        result.get("restaurants") or [],
+        active_filter_destination(result),
+        ("region_name", "address"),
+    )
+    restaurants = sort_media_first(restaurants, "restaurant_name")
     if not restaurants:
         st.info("해당 지역에는 아직 준비된 식당이 없습니다.")
         return
@@ -1937,7 +2494,12 @@ def render_restaurants(result: dict[str, Any]) -> None:
 
 
 def render_festivals(result: dict[str, Any]) -> None:
-    festivals = result.get("festivals") or []
+    festivals = filter_rows_for_destination(
+        result.get("festivals") or [],
+        active_filter_destination(result),
+        ("region_name", "event_place", "overview"),
+    )
+    festivals = sort_media_first(festivals, "festival_name")
     if not festivals:
         st.info("해당 지역에는 아직 준비된 축제가 없습니다.")
         return
@@ -1958,20 +2520,34 @@ def render_festivals(result: dict[str, Any]) -> None:
 
 def render_result_tabs(result: dict[str, Any]) -> None:
     section_header("RESULTS", "검색 결과", "선택한 지역의 관광지, 식당, 숙소, 축제를 탭으로 나눠 확인할 수 있습니다.")
+    destination = active_filter_destination(result)
+    display_result = dict(result)
+    display_result["restaurants"] = sort_media_first(
+        filter_rows_for_destination(result.get("restaurants") or [], destination, ("region_name", "address")),
+        "restaurant_name",
+    )
+    display_result["accommodations"] = sort_media_first(
+        filter_rows_for_destination(result.get("accommodations") or [], destination, ("region_name", "address")),
+        "accommodation_name",
+    )
+    display_result["festivals"] = sort_media_first(
+        filter_rows_for_destination(result.get("festivals") or [], destination, ("region_name", "event_place", "overview")),
+        "festival_name",
+    )
     tab_places, tab_restaurants, tab_accommodations, tab_festivals = st.tabs([
-        f"관광지 {len(result.get('places') or []):,}",
-        f"식당 {len(result.get('restaurants') or []):,}",
-        f"숙소 {len(result.get('accommodations') or []):,}",
-        f"축제 {len(result.get('festivals') or []):,}",
+        f"관광지 {len(display_result.get('places') or []):,}",
+        f"식당 {len(display_result.get('restaurants') or []):,}",
+        f"숙소 {len(display_result.get('accommodations') or []):,}",
+        f"축제 {len(display_result.get('festivals') or []):,}",
     ])
     with tab_places:
-        render_recommendations(result)
+        render_recommendations(display_result)
     with tab_restaurants:
-        render_restaurants(result)
+        render_restaurants(display_result)
     with tab_accommodations:
-        render_accommodations(result)
+        render_accommodations(display_result)
     with tab_festivals:
-        render_festivals(result)
+        render_festivals(display_result)
 
 
 def render_app() -> None:
@@ -1993,6 +2569,13 @@ def render_app() -> None:
             st.session_state.trip_result = None
 
     result = st.session_state.trip_result
+    current_destination = str(st.session_state.get("current_search_destination") or "")
+    if result and current_destination:
+        result_search = result.get("search") if isinstance(result, dict) else {}
+        result_destination_value = str((result_search or {}).get("destination") or "")
+        if result_destination_value and result_destination_value != current_destination:
+            st.session_state.trip_result = None
+            result = None
     if result:
         render_summary(result)
         render_live_api_tabs(result)

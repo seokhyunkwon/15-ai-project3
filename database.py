@@ -324,6 +324,15 @@ def media_optional_selects(table_name: str, alias: str) -> list[str]:
     return selects
 
 
+def media_image_order_sql(table_name: str, alias: str) -> str:
+    columns = get_table_columns(table_name)
+    image_columns = [f"{alias}.{column}" for column in ("image_path", "image_original_url") if column in columns]
+    if not image_columns:
+        return "0"
+    coalesced = "COALESCE(" + ", ".join(image_columns) + ")"
+    return f"CASE WHEN {coalesced} IS NULL OR {coalesced} = '' THEN 1 ELSE 0 END"
+
+
 def ensure_recommendation_schema() -> list[str]:
     existing = get_table_columns("places")
     results: list[str] = []
@@ -579,9 +588,12 @@ def region_match_sql(alias: str, region_keyword: str | None, params: list[Any]) 
         return ""
     clauses = []
     for keyword in candidates:
-        like = f"%{keyword}%"
-        clauses.append(f"({alias}.region_name = %s OR {alias}.province = %s OR {alias}.region_name LIKE %s OR {alias}.province LIKE %s)")
-        params.extend([keyword, keyword, like, like])
+        prefix_like = f"{keyword} %"
+        clauses.append(
+            f"({alias}.region_name = %s OR {alias}.province = %s "
+            f"OR {alias}.region_name LIKE %s OR {alias}.province LIKE %s)"
+        )
+        params.extend([keyword, keyword, prefix_like, prefix_like])
     return "(" + " OR ".join(clauses) + ")"
 
 
@@ -781,6 +793,7 @@ def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[d
         filters.append(region_clause)
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     media_selects = ",\n          ".join(media_optional_selects("restaurants", "rt"))
+    image_order = media_image_order_sql("restaurants", "rt")
     limit_value = int(limit or 0)
     limit_sql = "LIMIT %s" if limit_value > 0 else ""
     if limit_value > 0:
@@ -797,7 +810,9 @@ def search_restaurants_for_region(region_keyword: str, limit: int = 8) -> list[d
         FROM restaurants rt
         JOIN regions r ON r.region_id = rt.region_id
         {where_sql}
-        ORDER BY rt.restaurant_name
+        ORDER BY
+          {image_order},
+          rt.restaurant_name
         {limit_sql}
         """,
         params,
@@ -810,8 +825,16 @@ def search_accommodations_for_region(region_keyword: str, limit: int = 6) -> lis
     region_clause = region_match_sql("r", region_keyword, params)
     if region_clause:
         filters.append(region_clause)
+    filters.append(
+        """
+        a.accommodation_name NOT LIKE '%문화수련원%'
+        AND a.accommodation_name NOT LIKE '%수련원%'
+        AND a.accommodation_name NOT LIKE '%서원%'
+        """
+    )
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     media_selects = ",\n          ".join(media_optional_selects("accommodations", "a"))
+    image_order = media_image_order_sql("accommodations", "a")
     limit_value = int(limit or 0)
     limit_sql = "LIMIT %s" if limit_value > 0 else ""
     if limit_value > 0:
@@ -827,7 +850,9 @@ def search_accommodations_for_region(region_keyword: str, limit: int = 6) -> lis
         FROM accommodations a
         JOIN regions r ON r.region_id = a.region_id
         {where_sql}
-        ORDER BY a.accommodation_name
+        ORDER BY
+          {image_order},
+          a.accommodation_name
         {limit_sql}
         """,
         params,
@@ -843,6 +868,7 @@ def search_festivals_for_region(region_keyword: str, limit: int = 6) -> list[dic
     # 날짜가 없는 축제도 정보 카드로 보여준다. 날짜가 있으면 종료되지 않은 축제를 우선 정렬한다.
     where_sql = "WHERE " + " AND ".join(filters) if filters else ""
     media_selects = ",\n          ".join(media_optional_selects("festivals", "f"))
+    image_order = media_image_order_sql("festivals", "f")
     limit_value = int(limit or 0)
     limit_sql = "LIMIT %s" if limit_value > 0 else ""
     if limit_value > 0:
@@ -858,12 +884,14 @@ def search_festivals_for_region(region_keyword: str, limit: int = 6) -> list[dic
           f.fee_info,
           f.homepage,
           f.overview,
+          f.event_place,
           f.source_url,
           {media_selects}
         FROM festivals f
         JOIN regions r ON r.region_id = f.region_id
         {where_sql}
         ORDER BY
+          {image_order},
           CASE WHEN f.end_date IS NOT NULL AND f.end_date < CURDATE() THEN 1 ELSE 0 END,
           COALESCE(f.start_date, '2999-12-31'),
           f.festival_name
